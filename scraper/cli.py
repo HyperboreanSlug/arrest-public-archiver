@@ -18,7 +18,7 @@ def cmd_status(_args: argparse.Namespace) -> None:
             f"{'yes' if s.has_names else 'no':<7} {s.state:<5} {s.name}"
         )
     print("-" * 80)
-    print("has_names=yes → best for ethnic misclassification analysis.\n")
+    print("has_names=yes -> best for ethnic misclassification analysis.\n")
 
 
 def cmd_scrape(args: argparse.Namespace) -> None:
@@ -178,12 +178,16 @@ def cmd_misclassify(args: argparse.Namespace) -> None:
     s = ArrestSearcher(args.database or "data/arrests.db")
     eth = None if (args.ethnicity or "all") == "all" else args.ethnicity
     charge = None if (args.charge or "all") == "all" else args.charge
+    src = getattr(args, "source_system", None)
+    if src in (None, "", "all"):
+        src = None
     print("\n" + "=" * 60)
     print("  Ethnic misclassification analysis (PRIMARY PURPOSE)")
     print("=" * 60)
     print(f"  DB records: {s.get_total_count():,}")
     print(f"  Ethnicity filter: {args.ethnicity}")
     print(f"  Charge filter: {args.charge}")
+    print(f"  Source system: {src or 'all'}")
     print(f"  Min confidence: {args.confidence}")
     print("  Note: only rows with names are analyzed.\n")
     try:
@@ -192,6 +196,7 @@ def cmd_misclassify(args: argparse.Namespace) -> None:
             limit=args.limit,
             ethnicity_filter=eth,
             charge_category=charge,
+            source_system=src,
             return_base_count=True,
             named_only=True,
         )
@@ -217,6 +222,7 @@ def cmd_misclassify(args: argparse.Namespace) -> None:
                 args.export,
                 ethnicity_filter=eth,
                 charge_category=charge,
+                source_system=src,
                 min_confidence=args.confidence,
                 limit=args.limit,
             )
@@ -224,6 +230,143 @@ def cmd_misclassify(args: argparse.Namespace) -> None:
     finally:
         s.close()
     print("=" * 60 + "\n")
+
+
+def cmd_recentlybooked(args: argparse.Namespace) -> None:
+    from .database import Database
+    from .recentlybooked import RecentlyBookedScraper
+    from .searcher import ArrestSearcher
+
+    action = args.rb_action
+    db_path = args.database or "data/arrests.db"
+    with_photos = not args.no_photos
+    with_html = not args.no_html
+
+    if action == "misclassify":
+        args.source_system = "recentlybooked"
+        cmd_misclassify(args)
+        return
+
+    scraper = RecentlyBookedScraper(delay=float(args.delay or 1.0))
+    try:
+        if action == "live":
+            print("Fetching RecentlyBooked live feed…")
+            rows = scraper.scrape_live(
+                import_details=True,
+                with_photos=with_photos,
+                with_html=with_html,
+            )
+            print(f"  Live cards/details: {len(rows)}")
+            if args.do_import:
+                db = Database(db_path)
+                try:
+                    r = db.import_records(rows, skip_existing_urls=not args.force)
+                    print(f"  Import +{r['imported']} (skipped {r['skipped']})")
+                finally:
+                    db.close()
+            return
+
+        # scrape
+        print("RecentlyBooked scrape…")
+        if args.all:
+            rows = scraper.scrape_all(
+                limit_counties=int(args.limit_counties or 0),
+                with_photos=with_photos,
+                with_html=with_html,
+            )
+        elif args.state and args.county:
+            rows = scraper.scrape_county(
+                args.state,
+                args.county,
+                max_pages=int(args.max_pages or 0),
+                with_photos=with_photos,
+                with_html=with_html,
+            )
+        elif args.state:
+            rows = scraper.scrape_state(
+                args.state,
+                with_photos=with_photos,
+                with_html=with_html,
+            )
+        else:
+            print("Specify --all, --state ST, or --state ST --county slug")
+            return
+        print(f"  Collected {len(rows)} records")
+        db = Database(db_path)
+        try:
+            r = db.import_records(rows, skip_existing_urls=not args.force)
+            print(f"  Import +{r['imported']} (skipped {r['skipped']}) → {db_path}")
+        finally:
+            db.close()
+    finally:
+        scraper.close()
+
+
+def cmd_mugshot(args: argparse.Namespace) -> None:
+    action = args.mugshot_action
+    db_path = args.database or "data/arrests.db"
+
+    if action == "setup":
+        from .mugshot_ethnicity.setup import ensure_deepface, download_selected_weights
+
+        def _log(m: str) -> None:
+            print(m)
+
+        ok = ensure_deepface(auto_install=True, warm=False, log=_log)
+        if ok:
+            download_selected_weights(["Race"], detector_backend=args.detector or "retinaface", log=_log)
+            print("DeepFace setup OK")
+        else:
+            print("DeepFace setup failed — pip install -r requirements-vision.txt")
+        return
+
+    if action == "scan":
+        from .mugshot_ethnicity import scan_gross_misclassifications
+
+        def _log(m: str) -> None:
+            print(m)
+
+        faces = [x.strip() for x in (args.faces or "black,indian,asian").split(",") if x.strip()]
+        recorded = [x.strip() for x in (args.recorded or "WHITE").split(",") if x.strip()]
+        hits = scan_gross_misclassifications(
+            db_path=db_path,
+            min_confidence=float(args.confidence or 0.85),
+            limit=int(args.limit or 0),
+            state=args.state or None,
+            source_system=args.source_system or None,
+            face_labels=faces,
+            recorded_races=recorded,
+            force_rescan=bool(args.force_rescan),
+            log=_log,
+        )
+        print(f"Hits: {len(hits)}")
+        for h in hits[:30]:
+            rec = h.record or {}
+            print(
+                f"  id={rec.get('id')} {rec.get('first_name')} {rec.get('last_name')} "
+                f"race={h.recorded_race} face={h.predicted_label}@{h.confidence:.2f}"
+            )
+        return
+
+    if action == "verify":
+        from .mugshot_ethnicity import verify_misclassifications
+        from .searcher import ArrestSearcher
+
+        s = ArrestSearcher(db_path)
+        try:
+            mcs = s.analyze_ethnicities(
+                min_confidence=float(args.confidence or 0.5),
+                limit=int(args.limit or 50),
+                source_system=args.source_system or None,
+            )
+        finally:
+            s.close()
+        results = verify_misclassifications(mcs, backend="auto")
+        for vr in results[:30]:
+            print(vr)
+        return
+
+    print(f"Unknown mugshot action: {action}")
 
 
 def cmd_reclassify(args: argparse.Namespace) -> None:
@@ -341,6 +484,12 @@ def main() -> None:
     pm.add_argument("--limit", type=int, default=0, help="0 = scan all named rows")
     pm.add_argument("--max-display", type=int, default=30)
     pm.add_argument("--export", type=str)
+    pm.add_argument(
+        "--source-system",
+        type=str,
+        default="all",
+        help="Limit to source_system (e.g. recentlybooked)",
+    )
     pm.add_argument("--database", "-d", default="data/arrests.db")
 
     pd = sub.add_parser(
@@ -361,8 +510,64 @@ def main() -> None:
     )
     pr.add_argument("--database", "-d", default="data/arrests.db")
 
+    prb = sub.add_parser(
+        "recentlybooked",
+        help="RecentlyBooked.com live feed / scrape / misclassify",
+    )
+    prb_sub = prb.add_subparsers(dest="rb_action", required=True)
+    prb_live = prb_sub.add_parser("live", help="Fetch homepage recent bookings")
+    prb_live.add_argument("--import", dest="do_import", action="store_true")
+    prb_live.add_argument("--force", action="store_true")
+    prb_live.add_argument("--no-photos", action="store_true")
+    prb_live.add_argument("--no-html", action="store_true")
+    prb_live.add_argument("--delay", type=float, default=1.0)
+    prb_live.add_argument("--database", "-d", default="data/arrests.db")
+
+    prb_sc = prb_sub.add_parser("scrape", help="Scrape state/county/all")
+    prb_sc.add_argument("--state", type=str)
+    prb_sc.add_argument("--county", type=str)
+    prb_sc.add_argument("--all", action="store_true")
+    prb_sc.add_argument("--limit-counties", type=int, default=0)
+    prb_sc.add_argument("--max-pages", type=int, default=0)
+    prb_sc.add_argument("--force", action="store_true")
+    prb_sc.add_argument("--no-photos", action="store_true")
+    prb_sc.add_argument("--no-html", action="store_true")
+    prb_sc.add_argument("--delay", type=float, default=1.0)
+    prb_sc.add_argument("--database", "-d", default="data/arrests.db")
+
+    prb_mc = prb_sub.add_parser("misclassify", help="Surname misclass for RB rows")
+    prb_mc.add_argument("--ethnicity", default="all")
+    prb_mc.add_argument("--charge", default="all", choices=charge_choices)
+    prb_mc.add_argument("--confidence", type=float, default=0.5)
+    prb_mc.add_argument("--limit", type=int, default=0)
+    prb_mc.add_argument("--max-display", type=int, default=30)
+    prb_mc.add_argument("--export", type=str)
+    prb_mc.add_argument("--database", "-d", default="data/arrests.db")
+
+    pmug = sub.add_parser("mugshot", help="DeepFace face/race scan (optional vision deps)")
+    pmug_sub = pmug.add_subparsers(dest="mugshot_action", required=True)
+    pmug_setup = pmug_sub.add_parser("setup", help="Install DeepFace + Race weights")
+    pmug_setup.add_argument("--detector", default="retinaface")
+    pmug_scan = pmug_sub.add_parser("scan", help="Gross face vs recorded-race scan")
+    pmug_scan.add_argument("--confidence", type=float, default=0.85)
+    pmug_scan.add_argument("--limit", type=int, default=0)
+    pmug_scan.add_argument("--state", type=str)
+    pmug_scan.add_argument("--source-system", type=str, default="")
+    pmug_scan.add_argument("--faces", default="black,indian,asian")
+    pmug_scan.add_argument("--recorded", default="WHITE")
+    pmug_scan.add_argument("--force-rescan", action="store_true")
+    pmug_scan.add_argument("--database", "-d", default="data/arrests.db")
+    pmug_ver = pmug_sub.add_parser("verify", help="Verify surname misclass with face scores")
+    pmug_ver.add_argument("--confidence", type=float, default=0.5)
+    pmug_ver.add_argument("--limit", type=int, default=50)
+    pmug_ver.add_argument("--source-system", type=str, default="")
+    pmug_ver.add_argument("--database", "-d", default="data/arrests.db")
+
     args = p.parse_args()
-    {
+    # recentlybooked scrape vs live share handler via rb_action
+    if args.command == "recentlybooked" and args.rb_action == "scrape":
+        args.do_import = True  # scrape always imports
+    dispatch = {
         "status": cmd_status,
         "scrape": cmd_scrape,
         "import": cmd_import,
@@ -370,7 +575,10 @@ def main() -> None:
         "misclassify": cmd_misclassify,
         "dedupe": cmd_dedupe,
         "reclassify-charges": cmd_reclassify,
-    }[args.command](args)
+        "recentlybooked": cmd_recentlybooked,
+        "mugshot": cmd_mugshot,
+    }
+    dispatch[args.command](args)
 
 
 if __name__ == "__main__":

@@ -34,6 +34,7 @@ class EthnicNameDatabase:
         self.indian_first_names: Set[str] = set()
         self.hispanic_first_names: Set[str] = set()
         self.anglo_western_first_names: Set[str] = set()
+        self.slavic_first_names: Set[str] = set()
         self.african_american_surnames: Set[str] = set()
         self.native_american_surnames: Set[str] = set()
         self.european_surnames: Dict[str, Set[str]] = {}
@@ -126,6 +127,11 @@ class EthnicNameDatabase:
             for n in (data.get("anglo_western_first_names") or [])
             if n and str(n).strip()
         }
+        self.slavic_first_names = {
+            n.strip()
+            for n in (data.get("slavic_first_names") or [])
+            if n and str(n).strip()
+        }
 
         self.african_american_surnames = set(data.get("african_american_surnames", []))
         self.native_american_surnames = set(data.get("native_american_surnames", []))
@@ -163,7 +169,8 @@ class EthnicNameDatabase:
         self.indian_surnames_by_group = {"high_confidence": set(self.indian_surnames)}
         self.indian_first_names = {"Rahul", "Priya", "Amit", "Neha", "Raj"}
         self.hispanic_first_names = {"Alberto", "Carlos", "Maria", "Jose"}
-        self.anglo_western_first_names = {"Amy", "John", "Robert", "Emily"}
+        self.anglo_western_first_names = {"Amy", "John", "Robert", "Emily", "Andrey"}
+        self.slavic_first_names = {"Andrei", "Ivan", "Dmitri", "Sergei"}
         self.indian_ambiguous_surnames = {"Gill", "Perera", "Silva"}
 
     def _build_lookup_sets(self) -> None:
@@ -205,6 +212,7 @@ class EthnicNameDatabase:
         self._indian_first_lc = _fold_set(self.indian_first_names)
         self._hispanic_first_lc = _fold_set(self.hispanic_first_names)
         self._anglo_first_lc = _fold_set(self.anglo_western_first_names)
+        self._slavic_first_lc = _fold_set(self.slavic_first_names)
         self._asian_lc = {
             group: {n.lower() for n in names}
             for group, names in self.asian_surnames.items()
@@ -243,7 +251,10 @@ class EthnicNameDatabase:
 
     def _first_name_signal(self, first_name: Optional[str]) -> str:
         """
-        Return one of: indian | hispanic | anglo | unknown
+        Return one of: indian | hispanic | anglo | slavic | unknown
+
+        Note: *Andrey* is treated as Western/white; *Andrei* as Slavic.
+        Neither boosts Indian surname confidence.
         """
         self._build_lookup_sets()
         fn = self._normalize_given_name(first_name)
@@ -253,9 +264,55 @@ class EthnicNameDatabase:
         # only when explicitly in indian list
         if fn in self._indian_first_lc:
             return "indian"
+        # Slavic before Hispanic so Ivan/Andrei stay Slavic (not Spanish-default)
+        if fn in self._slavic_first_lc:
+            return "slavic"
         if fn in self._hispanic_first_lc:
             return "hispanic"
         if fn in self._anglo_first_lc:
+            return "anglo"
+        return "unknown"
+
+    @staticmethod
+    def _is_western_first_signal(signal: str) -> bool:
+        """First names that contradict South Asian ethnicity claims."""
+        return signal in ("anglo", "slavic", "hispanic")
+
+    def _resolve_given_name_signal(
+        self,
+        first_name: Optional[str] = None,
+        middle_name: Optional[str] = None,
+    ) -> str:
+        """
+        Combine first + middle name signals for ethnicity confidence.
+
+        Any Indic given name (first or middle) corroborates Indian surnames.
+        Western / Slavic / Hispanic signals dampen when no Indic given name.
+        """
+        signals: List[str] = []
+        for part in (first_name, middle_name):
+            if not part:
+                continue
+            # Score each token in multi-word middle names (e.g. "ZAHEER UDDIN")
+            tokens = re.split(r"[\s\-]+", str(part).strip())
+            for tok in tokens:
+                if not tok or len(tok) < 2:
+                    continue
+                # Skip bare initials
+                if len(tok) == 1 or (len(tok) == 2 and tok.endswith(".")):
+                    continue
+                sig = self._first_name_signal(tok)
+                if sig != "unknown":
+                    signals.append(sig)
+        if not signals:
+            return "unknown"
+        if "indian" in signals:
+            return "indian"
+        if "slavic" in signals:
+            return "slavic"
+        if "hispanic" in signals:
+            return "hispanic"
+        if "anglo" in signals:
             return "anglo"
         return "unknown"
 
@@ -263,12 +320,14 @@ class EthnicNameDatabase:
         self,
         surname: str,
         first_name: Optional[str] = None,
+        middle_name: Optional[str] = None,
     ) -> Tuple[str, float, List[str]]:
         """
-        Classify a person by surname + optional first name.
+        Classify a person by surname + optional first/middle names.
 
         Returns (ethnicity, confidence, matching_labels).
         Confidence is intentionally conservative for multi-ethnic surnames.
+        Middle names are used like first names for corroboration / dampening.
         """
         if not surname:
             return ("Unknown", 0.0, [])
@@ -328,9 +387,20 @@ class EthnicNameDatabase:
         if not matches:
             return ("Unknown", 0.0, [])
 
-        fn_signal = self._first_name_signal(first_name)
+        fn_signal = self._resolve_given_name_signal(first_name, middle_name)
         is_amb = surname_lc in self._indian_amb_lc
         is_hc = surname_lc in self._indian_hc_lc
+        # Very short surnames (Dey, Rai, …) are easy false positives with Western
+        # given names even when they also appear on Indian lists.
+        is_short_surname = len(surname_lc) <= 3
+        # Distinctive short forms that are almost only South Asian
+        _strong_short = frozenset({
+            "jha", "rao", "rai", "kaur", "nair", "jain", "bose", "modi",
+            "iyer", "kaul", "goel", "saha", "das", "dev", "lal", "pal",
+        })
+        is_weak_with_western = is_amb or (
+            is_short_surname and surname_lc not in _strong_short
+        )
         has_indian = any(m[0].startswith("Indian") for m in matches)
         has_hispanic = any(m[0] == "Hispanic" for m in matches)
         has_portuguese = any(m[0] == "Portuguese" for m in matches)
@@ -342,17 +412,25 @@ class EthnicNameDatabase:
             score = 0.0
             if ethnicity == "Indian" or ethnicity.startswith("Indian ("):
                 score = 1.05
-                if is_amb:
+                if is_amb or is_weak_with_western:
                     score = 0.55  # weak until first name helps
-                if is_hc and not is_amb:
+                if is_hc and not is_amb and not is_weak_with_western:
                     score = 1.15
                 if fn_signal == "indian":
                     score += 0.45
-                elif fn_signal == "anglo":
-                    score -= 0.55 if is_amb else (0.25 if not is_hc else 0.15)
+                elif fn_signal in ("anglo", "slavic"):
+                    # Andrey (white) / Andrei (Slavic) both contradict South Asian
+                    if is_amb or is_weak_with_western:
+                        score -= 0.65
+                    elif is_hc:
+                        score -= 0.2
+                    else:
+                        score -= 0.35
                 elif fn_signal == "hispanic":
                     # Alberto Perera / Carlos Silva — not Indian primary
-                    score -= 0.75 if is_amb or has_portuguese or has_hispanic else 0.35
+                    score -= 0.75 if (
+                        is_amb or is_weak_with_western or has_portuguese or has_hispanic
+                    ) else 0.35
             elif ethnicity == "Hispanic":
                 score = 0.95
                 if fn_signal == "hispanic":
@@ -379,6 +457,8 @@ class EthnicNameDatabase:
                 score = 0.4
                 if fn_signal == "anglo":
                     score += 0.25
+                if fn_signal == "slavic":
+                    score += 0.4  # Andrei, Ivan, Dmitri, …
             else:
                 score = 0.3
             return -score  # sort ascending → highest score first
@@ -410,8 +490,8 @@ class EthnicNameDatabase:
             matches,
             best_match=best_match,
             first_name_signal=fn_signal,
-            is_ambiguous=is_amb,
-            is_high_confidence_surname=is_hc,
+            is_ambiguous=is_amb or is_weak_with_western,
+            is_high_confidence_surname=is_hc and not is_weak_with_western,
         )
 
         if forced_by_first and best_match in ("Hispanic", "Portuguese"):
@@ -419,14 +499,18 @@ class EthnicNameDatabase:
             confidence = min(confidence, 0.62)
             confidence = max(confidence, 0.52)
 
-        # Hard floors: ambiguous Indian surname without Indic first name
-        if best_match.startswith("Indian") and is_amb:
-            if fn_signal == "anglo":
-                confidence = min(confidence, 0.28)
+        # Hard floors: weak/ambiguous Indian surname without Indic first name
+        if best_match.startswith("Indian") and (is_amb or is_weak_with_western):
+            if fn_signal in ("anglo", "slavic"):
+                # Adam Dey, Andrey Lele, Andrei Lele — below default 0.5 Analyze floor
+                confidence = min(confidence, 0.32)
             elif fn_signal == "hispanic":
                 confidence = min(confidence, 0.25)
             elif fn_signal == "unknown":
                 confidence = min(confidence, 0.42)
+        elif best_match.startswith("Indian") and fn_signal in ("anglo", "slavic") and is_hc:
+            # Amy Patel / Andrei Singh: still Indian label, damped confidence
+            confidence = min(confidence, 0.55)
 
         return (best_match, confidence, [m[0] for m in matches])
 
@@ -434,9 +518,12 @@ class EthnicNameDatabase:
         self,
         surname: str,
         first_name: Optional[str] = None,
+        middle_name: Optional[str] = None,
     ) -> Tuple[str, float]:
         """Get the most likely ethnicity for a name."""
-        ethnicity, confidence, _ = self.classify_by_name(surname, first_name=first_name)
+        ethnicity, confidence, _ = self.classify_by_name(
+            surname, first_name=first_name, middle_name=middle_name
+        )
         return (ethnicity, confidence)
 
     def is_hispanic_surname(self, surname: str) -> bool:
@@ -542,17 +629,17 @@ class EthnicNameDatabase:
                 base = min(base, 0.25 if is_ambiguous else 0.4)
             elif best_match in ("Hispanic", "Portuguese"):
                 base = min(1.0, base + 0.12)
-        elif first_name_signal == "anglo":
+        elif first_name_signal in ("anglo", "slavic"):
+            # Andrey ≈ white Western; Andrei ≈ Slavic — neither supports Indian
             if best_match.startswith("Indian"):
                 if is_ambiguous:
                     base = min(base, 0.28)
                 elif is_high_confidence_surname:
-                    # Possible intermarriage / diaspora given name — still dampen
-                    base = min(base, 0.62)
+                    base = min(base, 0.55)
                 else:
                     base = min(base, 0.45)
             elif best_match.startswith("European"):
-                base = min(1.0, base + 0.1)
+                base = min(1.0, base + (0.15 if first_name_signal == "slavic" else 0.1))
 
         if multi_family and not best_match.startswith("Indian"):
             base -= 0.08 * (self._family_count(matches) - 1)

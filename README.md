@@ -1,27 +1,26 @@
 # Arrest Public Archiver
 
-Download and archive **publicly published** U.S. arrest / booking open data, then run **ethnic surname vs recorded-race misclassification** analysis.
+Download and archive **publicly published** U.S. arrest / booking open data (and RecentlyBooked.com public pages), then run **ethnic surname vs recorded-race** analysis and optional **DeepFace mugshot face/race** checks.
 
 > **Primary purpose:** Find potential race/ethnicity misclassifications (e.g. Hispanic or Indian surnames recorded as White) in open arrest/booking datasets that include personal names and a race field.
 
-> **Legal note:** Arrest ≠ conviction. Only ingest data jurisdictions already publish. Respect portal terms of use and rate limits. Do not commit CSVs or databases containing personal data to git. Records may be incomplete, sealed, or wrong.
-
-There is **no national bulk named-arrest feed**. Coverage is city/county open-data portals (Socrata, etc.). Prefer sources marked **names=yes** for misclassification work.
+> **Legal note:** Arrest ≠ conviction. Only ingest data jurisdictions already publish. Respect portal terms of use and rate limits. Do not commit CSVs, databases, mugshots, or archived HTML containing personal data to git.
 
 ## Features
 
 - **Bulk open-data scrapers** (Socrata SODA + direct CSV)
-- **SQLite** archive with import / enhanced dedupe (merge multi-state + multi-charge)
-- **Misclassification analysis** (primary) — same ethnic surname + **first-name confidence** as SOR archiver
-- **Charge categories** (sex crimes, B&E, drugs, …) with filters
-- **Statistics** tab: misclassified-as **Black / White / Other**, by ethnicity, by charge
-- **Search**, integrity, CLI + dark GUI (sortable columns)
-- Source catalog with `has_names` flag
+- **RecentlyBooked.com** tab: live feed, full-site scrape, HTML + mugshot archive
+- **SQLite** archive (`scraper/database/`) with merge dedupe
+- **Surname misclassification** (primary) — ethnic surname + first/middle-name confidence
+- **DeepFace** (optional) — local face/race gross-mismatch scan on archived mugshots
+- **Charge categories** with Search / Misclassify filters
+- Modular dark GUI (lazy tabs) + CLI
 
 ## Requirements
 
 - Python 3.10+
 - `pip install -r requirements.txt`
+- Optional vision stack: `pip install -r requirements-vision.txt`
 
 ## Quick start
 
@@ -29,73 +28,47 @@ There is **no national bulk named-arrest feed**. Coverage is city/county open-da
 cd arrest-public-archiver
 pip install -r requirements.txt
 
-# List sources (prefer has_names=yes for misclass)
 python -m scraper status
-
-# Download named open-data feeds + import to DB
 python -m scraper scrape --named-only --limit 2000
-
-# PRIMARY: ethnic misclassification (optional charge filter)
 python -m scraper misclassify --ethnicity hispanic
 python -m scraper misclassify --ethnicity indian --charge sex_crimes
-python -m scraper misclassify --charge burglary_be --export data/misclass_be.csv
 
-# Search by name and/or charge category
-python -m scraper search --name Garcia
-python -m scraper search --charge sex_crimes
-python -m scraper search --charge drugs --limit 50
+# RecentlyBooked (public HTML; polite delays)
+python -m scraper recentlybooked live --import
+python -m scraper recentlybooked scrape --state nj --county essex
+python -m scraper recentlybooked misclassify --ethnicity hispanic
 
-# Backfill categories on old rows; dedupe
-python -m scraper reclassify-charges
-python -m scraper dedupe
+# DeepFace (after requirements-vision.txt)
+python -m scraper mugshot setup
+python -m scraper mugshot scan --source-system recentlybooked
 ```
-
-### Charge categories
-
-Keyword classifier on charge text (stored as `charge_category`):
-
-`sex_crimes` · `homicide` · `violent` · `weapons` · `robbery` · `burglary_be` (B&E) ·  
-`theft_property` · `drugs` · `dui_traffic` · `fraud_financial` · `domestic` ·  
-`public_order` · `other` · `unknown`
-
-Use `--charge` / GUI **Charge** combo on Misclassify and Search.
 
 ### GUI
 
 ```bash
 python gui.py
+# or run_gui.bat
 ```
 
-Tabs: **Misclassify** (first) · Scrape · Search · Integrity · Settings.
+Tabs: **Browse** (Misclassify / Statistics / Search / Integrity / DeepFace review) · **RecentlyBooked** · **DeepFace** · **Scrape** · **Settings**.
 
-## MVP open-data sources
+See [MODULES.md](MODULES.md) for the module map.
 
-| ID | Jurisdiction | Names | Notes |
-|----|--------------|-------|--------|
-| `montgomery_md_arrests` | Montgomery Co, MD | yes | Strong misclass feed |
-| `king_wa_bookings` | King Co, WA jail bookings | yes | Strong misclass feed |
-| `la_arrests` | Los Angeles PD | often no | Race/charge stats; field map may need live tweak |
-| `chicago_arrests` | Chicago PD | often limited | Public export may omit names |
-| `seattle_arrests` | Seattle PD | check | Open arrest data |
-| `sf_arrests` | San Francisco | check | Often incident-centric |
+### Charge categories
 
-Field maps live in `scraper/config.py` and may need adjustment after a live schema pull.
+`sex_crimes` · `homicide` · `violent` · `weapons` · `robbery` · `burglary_be` ·  
+`theft_property` · `drugs` · `dui_traffic` · `fraud_financial` · `domestic` ·  
+`public_order` · `other` · `unknown`
 
-## Architecture
+## Data on disk (gitignored)
 
-```
-scraper/config.py          source catalog
-scraper/scrapers/socrata.py  SODA pagination
-scraper/database.py        arrests table
-scraper/searcher.py        misclassification (primary)
-scraper/ethnic_names.*     surname lists
-gui.py                     CustomTkinter UI
-```
+| Path | Contents |
+|------|----------|
+| `data/arrests.db` | SQLite archive |
+| `data/html/recentlybooked/` | Archived booking HTML |
+| `data/photos/recentlybooked/` | Downloaded mugshots |
+| `data/app_settings.json` | GUI settings |
 
-## Related project
+## Not included (SOR-only)
 
-Sex offender registry counterpart: [sor-public-archiver](https://github.com/HyperboreanSlug/sor-public-archiver).
-
-## License
-
-MIT — see `LICENSE`.
+NSOPW harvest, state-registry report fetchers, and browser cookie/CAPTCHA jar are intentionally omitted.

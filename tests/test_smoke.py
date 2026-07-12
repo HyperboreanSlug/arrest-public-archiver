@@ -316,5 +316,66 @@ class DatabaseAndMisclassTests(unittest.TestCase):
             searcher.close()
 
 
+class RecentlyBookedParseTests(unittest.TestCase):
+    def test_fixture_county_and_detail(self):
+        from scraper.recentlybooked.parse import parse_county_cards, parse_detail
+
+        fixtures = ROOT / "tests" / "fixtures"
+        county = (fixtures / "recentlybooked_county.html").read_text(encoding="utf-8")
+        cards = parse_county_cards(county)
+        self.assertGreaterEqual(len(cards), 1)
+        self.assertEqual(cards[0].get("source_system"), "recentlybooked")
+        detail = (fixtures / "recentlybooked_detail.html").read_text(encoding="utf-8")
+        rec = parse_detail(
+            detail, "https://recentlybooked.com/xx/test-county/jane-doe~1_2"
+        )
+        self.assertEqual(rec.get("first_name"), "Jane")
+        self.assertEqual(rec.get("last_name"), "Doe")
+        self.assertTrue(rec.get("charge_description"))
+
+
+class SchemaV3Tests(unittest.TestCase):
+    def test_photo_html_and_deepface_scan(self):
+        db = Database.create_in_memory()
+        try:
+            r = db.import_records(
+                [
+                    {
+                        "first_name": "Test",
+                        "last_name": "Person",
+                        "race": "White",
+                        "source_url": "rb:1",
+                        "source_system": "recentlybooked",
+                        "photo_path": "data/photos/x.webp",
+                        "html_path": "data/html/x.html",
+                    }
+                ]
+            )
+            self.assertEqual(r["imported"], 1)
+            row = next(db.iter_arrests(source_system="recentlybooked", with_photos=True))
+            self.assertEqual(row.get("html_path"), "data/html/x.html")
+            db.upsert_deepface_scan(
+                arrest_id=int(row["id"]),
+                photo_path=row.get("photo_path"),
+                top_label="black",
+                top_confidence=0.91,
+                is_hit=True,
+                recorded_race="White",
+            )
+            hits = db.list_deepface_hits(source_system="recentlybooked")
+            self.assertEqual(len(hits), 1)
+        finally:
+            db.close()
+
+    def test_slavic_first_names_loaded(self):
+        eth = EthnicNameDatabase()
+        self.assertTrue(eth.slavic_first_names)
+        # Slavic given name dampens ambiguous Indian surname confidence vs Anglo
+        _, conf_slavic, _ = eth.classify_by_name(
+            "Gill", first_name="Andrei", middle_name=None
+        )
+        self.assertIsInstance(conf_slavic, float)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -7,6 +7,7 @@ but the recorded race field is incompatible.
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -33,7 +34,10 @@ class Misclassification:
 
 
 _ETHNICITY_COMPATIBLE_RACES = {
-    "hispanic": {"HISPANIC", "LATINO", "LATINA", "LATINX", "H", "WHITE HISPANIC"},
+    "hispanic": {
+        "HISPANIC", "LATINO", "LATINA", "LATINX", "H",
+        "WHITE HISPANIC", "HISPANIC OR LATINO", "LATINO OR HISPANIC",
+    },
     "asian": {
         "ASIAN", "ASIAN / PACIFIC ISLANDER", "ASIAN/PACIFIC ISLANDER",
         "PACIFIC ISLANDER", "A", "API", "CHINESE", "KOREAN", "JAPANESE",
@@ -68,22 +72,24 @@ _RACE_ALIASES = {
     "AFRICAN-AMERICAN": "BLACK", "BLACK OR AFRICAN AMERICAN": "BLACK",
     "H": "HISPANIC", "LATINO": "HISPANIC", "LATINA": "HISPANIC",
     "LATINX": "HISPANIC", "HISPANIC": "HISPANIC",
+    "HISPANIC OR LATINO": "HISPANIC", "LATINO OR HISPANIC": "HISPANIC",
+    "HISPANIC/LATINO": "HISPANIC", "LATINO/HISPANIC": "HISPANIC",
     "A": "ASIAN", "API": "ASIAN", "ASIAN": "ASIAN",
     "U": "UNKNOWN", "UNK": "UNKNOWN", "UNKNOWN": "UNKNOWN",
     "N/A": "UNKNOWN", "NA": "UNKNOWN", "NONE": "UNKNOWN", "NULL": "UNKNOWN",
     "": "UNKNOWN",
     # LAPD descent codes often used in open data
-    "C": "WHITE",  # sometimes Chinese in LAPD — ambiguous; leave as C if needed
-    "F": "ASIAN",  # Filipino
-    "K": "ASIAN",  # Korean
-    "J": "ASIAN",  # Japanese
-    "V": "ASIAN",  # Vietnamese
-    "Z": "ASIAN",  # Asian Indian in some LAPD coding
+    "C": "WHITE",
+    "F": "ASIAN",
+    "K": "ASIAN",
+    "J": "ASIAN",
+    "V": "ASIAN",
+    "Z": "ASIAN",
     "P": "PACIFIC ISLANDER",
     "I": "NATIVE AMERICAN",
     "O": "OTHER",
     "X": "UNKNOWN",
-    "G": "OTHER",  # Guamanian etc. varies
+    "G": "OTHER",
 }
 
 
@@ -98,18 +104,26 @@ def _canonical_race_key(recorded_race: str) -> str:
         return _RACE_ALIASES[r_spaced]
     if len(r_spaced) == 1 and r_spaced in _RACE_ALIASES:
         return _RACE_ALIASES[r_spaced]
-    if r_spaced in ("OTHER ASIAN", "ASIAN OTHER"):
+    if r_spaced in ("OTHER ASIAN", "ASIAN OTHER", "OTHER ASIAN PACIFIC ISLANDER"):
         return "OTHER ASIAN"
     if "OTHER" in r_spaced and "ASIAN" in r_spaced:
         return "OTHER ASIAN"
     if "HISPANIC" in r_spaced and "WHITE" in r_spaced:
         return "WHITE HISPANIC"
+    if "HISPANIC" in r_spaced or "LATINO" in r_spaced or "LATINA" in r_spaced:
+        return "HISPANIC"
     if r_spaced.startswith("WHITE") or r_spaced.endswith(" WHITE"):
         return "WHITE"
     if r_spaced in ("OTHER", "OTHER RACE", "OTHER RACES", "OT"):
         return "OTHER"
     if "ASIAN" in r_spaced and "PACIFIC" in r_spaced:
         return "ASIAN / PACIFIC ISLANDER"
+    if r_spaced in (
+        "PACIFIC ISLANDER",
+        "NATIVE HAWAIIAN",
+        "NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER",
+    ):
+        return "PACIFIC ISLANDER"
     return r_spaced
 
 
@@ -157,13 +171,38 @@ def _is_other_or_other_asian(race_key: str) -> bool:
     return False
 
 
-def _is_compatible(likely_ethnicity: str, recorded_race: str) -> bool:
+def _has_hispanic_ethnicity(recorded_ethnicity: Optional[str]) -> bool:
+    eth = (recorded_ethnicity or "").strip().upper()
+    if not eth:
+        return False
+    if re.search(r"\bNON[\s\-]?HISPANIC\b", eth) or "NOT HISPANIC" in eth:
+        return False
+    markers = (
+        "HISPANIC", "LATINO", "LATINA", "LATINX",
+        "HISPANIC OR LATINO", "LATINO OR HISPANIC",
+    )
+    if any(m in eth for m in markers):
+        return True
+    if eth in ("H", "HIS", "HISP"):
+        return True
+    return False
+
+
+def _is_compatible(
+    likely_ethnicity: str,
+    recorded_race: str,
+    recorded_ethnicity: Optional[str] = None,
+) -> bool:
     if not recorded_race or not likely_ethnicity or likely_ethnicity == "Unknown":
         return True
     family = _ethnicity_family(likely_ethnicity)
     race = _canonical_race_key(recorded_race)
     if family == "indian" and _is_other_or_other_asian(race):
         return True
+    if family == "hispanic" and race in ("UNKNOWN", "OTHER"):
+        return True
+    if family == "hispanic" and race == "WHITE":
+        return _has_hispanic_ethnicity(recorded_ethnicity)
     compatible = _ETHNICITY_COMPATIBLE_RACES.get(family)
     if not compatible:
         return race == likely_ethnicity.strip().upper()
@@ -186,7 +225,6 @@ def _last_name_from_record(record: Dict[str, Any]) -> str:
 
 
 def _first_name_from_record(record: Dict[str, Any]) -> str:
-    """Given name only (no middle) — used with SOR-parity first-name confidence."""
     first = (record.get("first_name") or record.get("FirstName") or "").strip()
     if first:
         return first.split()[0]
@@ -195,6 +233,23 @@ def _first_name_from_record(record: Dict[str, Any]) -> str:
         parts = full.replace(",", " ").split()
         if len(parts) >= 2:
             return parts[0]
+    return ""
+
+
+def _middle_name_from_record(record: Dict[str, Any]) -> str:
+    mid = (record.get("middle_name") or record.get("MiddleName") or "").strip()
+    if mid:
+        return mid
+    first = (record.get("first_name") or record.get("FirstName") or "").strip()
+    if first:
+        parts = first.split()
+        if len(parts) >= 2:
+            return " ".join(parts[1:])
+    full = (record.get("full_name") or record.get("Name") or "").strip()
+    if full:
+        parts = full.replace(",", " ").split()
+        if len(parts) >= 3:
+            return " ".join(parts[1:-1])
     return ""
 
 
@@ -242,6 +297,7 @@ class ArrestSearcher:
         state: Optional[str] = None,
         race: Optional[str] = None,
         charge_category: Optional[str] = None,
+        source_system: Optional[str] = None,
         limit: int = 1000,
     ) -> SearchResults:
         start = time.time()
@@ -250,6 +306,7 @@ class ArrestSearcher:
             state=state,
             race=race,
             charge_category=charge_category,
+            source_system=source_system,
             limit=limit,
         )
         return SearchResults(
@@ -261,6 +318,7 @@ class ArrestSearcher:
                 "state": state or "",
                 "race": race or "",
                 "charge_category": charge_category or "",
+                "source_system": source_system or "",
             },
         )
 
@@ -270,6 +328,7 @@ class ArrestSearcher:
         limit: int = 0,
         ethnicity_filter: Optional[str] = None,
         charge_category: Optional[str] = None,
+        source_system: Optional[str] = None,
         return_base_count: bool = False,
         named_only: bool = True,
     ):
@@ -278,7 +337,7 @@ class ArrestSearcher:
 
         Only rows with a last/full name can be classified. Open-data sources
         without names never appear here (by design when named_only=True).
-        Optional charge_category narrows to e.g. sex_crimes or burglary_be.
+        Optional charge_category / source_system narrow the scan.
         """
         from .charge_classifications import classify_charge
 
@@ -288,6 +347,9 @@ class ArrestSearcher:
         charge_f = (charge_category or "").strip().lower() or None
         if charge_f in ("all", "*", ""):
             charge_f = None
+        src_f = (source_system or "").strip().lower() or None
+        if src_f in ("all", "*", ""):
+            src_f = None
         hc_only = filter_key in (
             "indian_high_confidence",
             "high_confidence_indian",
@@ -303,8 +365,8 @@ class ArrestSearcher:
             newest_first=newest_first,
             named_only=named_only,
             charge_category=charge_f,
+            source_system=src_f,
         ):
-            # Fallback classify if column empty (legacy rows)
             if charge_f:
                 cat = (record.get("charge_category") or "").strip().lower()
                 if not cat or cat == "unknown":
@@ -314,14 +376,17 @@ class ArrestSearcher:
                     continue
             last_name = _last_name_from_record(record)
             first_name = _first_name_from_record(record)
+            middle_name = _middle_name_from_record(record)
             recorded_race = (record.get("race") or "").strip()
+            recorded_ethnicity = (record.get("ethnicity") or "").strip() or None
             if not last_name:
                 continue
             if hc_only and not self.ethnic_db.is_indian_high_confidence_surname(last_name):
                 continue
-            # Parity with SOR: first-name scoring + ambiguous surname floors
             likely_eth, confidence, matching_names = self.ethnic_db.classify_by_name(
-                last_name, first_name=first_name or None
+                last_name,
+                first_name=first_name or None,
+                middle_name=middle_name or None,
             )
             if confidence < min_confidence or likely_eth == "Unknown":
                 continue
@@ -329,11 +394,10 @@ class ArrestSearcher:
             if family_filter and family != family_filter:
                 continue
             base_count += 1
-            if _is_compatible(likely_eth, recorded_race):
+            if _is_compatible(likely_eth, recorded_race, recorded_ethnicity):
                 continue
             if not record.get("charge_category"):
                 record["charge_category"] = classify_charge(record)
-            # Persist analysis fields on the in-memory row for export/UI
             record["likely_ethnicity"] = likely_eth
             record["name_confidence"] = confidence
             misclassifications.append(
@@ -367,6 +431,7 @@ class ArrestSearcher:
         output_path: str,
         ethnicity_filter: Optional[str] = None,
         charge_category: Optional[str] = None,
+        source_system: Optional[str] = None,
         min_confidence: float = 0.5,
         limit: int = 0,
     ) -> int:
@@ -379,6 +444,7 @@ class ArrestSearcher:
             limit=limit,
             ethnicity_filter=ethnicity_filter,
             charge_category=charge_category,
+            source_system=source_system,
         )
         if not results:
             with open(output_path, "w", newline="", encoding="utf-8") as f:
@@ -427,7 +493,6 @@ class ArrestSearcher:
         self.db.close()
 
 
-# Back-compat alias used by package __init__
 SexOffenderSearcher = ArrestSearcher
 
 _searcher: Optional[ArrestSearcher] = None

@@ -17,6 +17,22 @@ DEFAULTS: Dict[str, Any] = {
     "scrape_auto_import": True,
     "scrape_skip_existing": True,
     "scrape_default_row_limit": 5000,
+    # RecentlyBooked
+    "rb_with_photos": True,
+    "rb_with_html": True,
+    "rb_delay": 1.0,
+    # DeepFace (local mugshot race model)
+    "deepface_auto_setup": True,
+    "deepface_auto_warm": True,
+    "deepface_detector": "retinaface",
+    "deepface_weight_models": "Race",
+    "deepface_scan_state": "",
+    "deepface_scan_min_conf": "0.85",
+    "deepface_scan_limit": "0",
+    "deepface_scan_recorded": "WHITE",
+    "deepface_scan_faces": "black,indian,asian",
+    "deepface_scan_force_rescan": False,
+    "deepface_scan_source": "",  # e.g. recentlybooked or blank=all
 }
 
 
@@ -54,6 +70,21 @@ def normalize_settings(s: Dict[str, Any]) -> Dict[str, Any]:
     out["backup_on_close"] = bool(out.get("backup_on_close", False))
     out["scrape_auto_import"] = bool(out.get("scrape_auto_import", True))
     out["scrape_skip_existing"] = bool(out.get("scrape_skip_existing", True))
+    out["rb_with_photos"] = bool(out.get("rb_with_photos", True))
+    out["rb_with_html"] = bool(out.get("rb_with_html", True))
+    out["deepface_auto_setup"] = bool(out.get("deepface_auto_setup", True))
+    out["deepface_auto_warm"] = bool(out.get("deepface_auto_warm", True))
+    out["deepface_scan_force_rescan"] = bool(out.get("deepface_scan_force_rescan", False))
+    det = str(out.get("deepface_detector") or "retinaface").strip().lower()
+    allowed_det = {
+        "retinaface", "opencv", "ssd", "mtcnn", "yunet", "mediapipe", "centerface",
+    }
+    out["deepface_detector"] = det if det in allowed_det else "retinaface"
+    wm = str(out.get("deepface_weight_models") or "Race").strip()
+    parts = [p.strip() for p in wm.replace(";", ",").split(",") if p.strip()]
+    if "Race" not in parts:
+        parts.insert(0, "Race")
+    out["deepface_weight_models"] = ",".join(parts)
     try:
         out["max_backups"] = max(0, min(int(out.get("max_backups", 10)), 500))
     except (TypeError, ValueError):
@@ -62,4 +93,8 @@ def normalize_settings(s: Dict[str, Any]) -> Dict[str, Any]:
         out["scrape_default_row_limit"] = max(0, int(out.get("scrape_default_row_limit", 5000)))
     except (TypeError, ValueError):
         out["scrape_default_row_limit"] = 5000
+    try:
+        out["rb_delay"] = max(0.2, float(out.get("rb_delay", 1.0)))
+    except (TypeError, ValueError):
+        out["rb_delay"] = 1.0
     return out
