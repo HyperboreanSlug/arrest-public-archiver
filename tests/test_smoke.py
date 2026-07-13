@@ -125,6 +125,20 @@ class DatabaseAndMisclassTests(unittest.TestCase):
             self.assertIn("garcia", names_h)
             self.assertGreaterEqual(base_h, 1)
 
+            garcia = next(m for m in hisp if (m.record.get("last_name") or "").lower() == "garcia")
+            self.db.update_arrest(
+                int(garcia.record["id"]),
+                {"flags": '{"ethnicity_review": "correct"}'},
+            )
+            hisp2, _ = searcher.analyze_ethnicities(
+                min_confidence=0.5,
+                limit=0,
+                ethnicity_filter="hispanic",
+                return_base_count=True,
+            )
+            names_h2 = {(m.record.get("last_name") or "").lower() for m in hisp2}
+            self.assertNotIn("garcia", names_h2)
+
             indian, base_i = searcher.analyze_ethnicities(
                 min_confidence=0.5,
                 limit=0,

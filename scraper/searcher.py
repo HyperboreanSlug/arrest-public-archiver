@@ -7,6 +7,7 @@ but the recorded race field is incompatible.
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from dataclasses import dataclass, field
@@ -212,6 +213,21 @@ def _is_compatible(
     return raw_u in compatible
 
 
+def ethnicity_review_verdict(record: Optional[Dict[str, Any]]) -> str:
+    """Return ``correct`` / ``incorrect`` / ```` from arrests.flags JSON."""
+    if not record:
+        return ""
+    flags = record.get("flags")
+    if isinstance(flags, str) and flags.strip():
+        try:
+            flags = json.loads(flags)
+        except (TypeError, json.JSONDecodeError, ValueError):
+            return ""
+    if not isinstance(flags, dict):
+        return ""
+    return str(flags.get("ethnicity_review") or "").strip().lower()
+
+
 def _last_name_from_record(record: Dict[str, Any]) -> str:
     last = (record.get("last_name") or record.get("LastName") or "").strip()
     if last:
@@ -367,6 +383,9 @@ class ArrestSearcher:
             charge_category=charge_f,
             source_system=src_f,
         ):
+            # Human review: Classified correctly → leave the misclass queue.
+            if ethnicity_review_verdict(record) == "correct":
+                continue
             if charge_f:
                 cat = (record.get("charge_category") or "").strip().lower()
                 if not cat or cat == "unknown":
