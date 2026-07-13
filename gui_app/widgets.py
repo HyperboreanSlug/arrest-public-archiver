@@ -489,6 +489,57 @@ def enable_tree_column_sort(
         tree.heading(c, text=labels.get(c, c.upper()), command=lambda cc=c: on_heading(cc))
 
 
+# ── Row ↔ record mapping (survives column sorting) ──────────────────────────
+# Column sorting moves tree items, so a row's *visual* position no longer
+# matches its index in the backing list. Bind records to the tree item id
+# (iid) instead of the position so selection always resolves the right record.
+
+def tree_rows_reset(tree: ttk.Treeview) -> None:
+    """Clear the iid→record map (call alongside ``tree.delete(children)``)."""
+    tree._rec_by_iid = {}  # type: ignore[attr-defined]
+
+
+def tree_row_bind(tree: ttk.Treeview, iid: str, record: Any) -> str:
+    """Associate a freshly inserted tree ``iid`` with its record."""
+    mapping = getattr(tree, "_rec_by_iid", None)
+    if mapping is None:
+        mapping = {}
+        tree._rec_by_iid = mapping  # type: ignore[attr-defined]
+    mapping[iid] = record
+    return iid
+
+
+def tree_row_record(tree: ttk.Treeview, iid: str) -> Optional[Any]:
+    """Record bound to ``iid`` (or ``None``)."""
+    return getattr(tree, "_rec_by_iid", {}).get(iid)
+
+
+def tree_selected_record(tree: ttk.Treeview) -> Optional[Any]:
+    """Record for the current selection, resolved by iid (sort-safe)."""
+    sel = tree.selection()
+    if not sel:
+        return None
+    return tree_row_record(tree, sel[0])
+
+
+def tree_row_forget(tree: ttk.Treeview, iid: str) -> None:
+    """Drop a single row's mapping (call alongside ``tree.delete(iid)``)."""
+    getattr(tree, "_rec_by_iid", {}).pop(iid, None)
+
+
+def tree_iid_for_record(tree: ttk.Treeview, record: Any) -> Optional[str]:
+    """Find the tree iid whose bound record matches ``record`` (id/url/identity)."""
+    mapping = getattr(tree, "_rec_by_iid", {})
+    rid = record.get("id") if hasattr(record, "get") else None
+    url = str(record.get("source_url") or "") if hasattr(record, "get") else ""
+    for iid, rec in mapping.items():
+        if rec is record:
+            return iid
+        if rid is not None and hasattr(rec, "get") and rec.get("id") == rid:
+            return iid
+        if url and hasattr(rec, "get") and str(rec.get("source_url") or "") == url:
+            return iid
+    return None
 
 
 # Underscore aliases (match original gui.py call sites; avoid shadowing locals named card)

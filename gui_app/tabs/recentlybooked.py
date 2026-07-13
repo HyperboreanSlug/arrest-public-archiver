@@ -14,6 +14,12 @@ from gui_app.widgets import (
     _hpaned,
     _stretch_columns,
     _tree_frame,
+    tree_iid_for_record,
+    tree_row_bind,
+    tree_row_forget,
+    tree_row_record,
+    tree_rows_reset,
+    tree_selected_record,
 )
 from scraper.database import Database
 from scraper.recentlybooked import RecentlyBookedScraper
@@ -119,7 +125,9 @@ class RecentlyBookedTabMixin:
             else "classified incorrectly"
         )
         saved = self._rb_persist_verdict(record, verdict)
-        # Keep in-memory copy in sync for the current selection index.
+        # Keep in-memory copy in sync for the current selection.
+        idx = None
+        matched = None
         for i, existing in enumerate(records):
             same_id = record.get("id") and existing.get("id") == record.get("id")
             same_url = (
@@ -131,9 +139,8 @@ class RecentlyBookedTabMixin:
                 if record.get("id") is not None:
                     existing["id"] = record["id"]
                 idx = i
+                matched = existing
                 break
-        else:
-            idx = None
 
         if saved:
             self.log(f"Marked {self._rb_name(record)} as {label}.")
@@ -144,20 +151,25 @@ class RecentlyBookedTabMixin:
             )
 
         if remove_from_list and idx is not None:
-            children = tree.get_children()
-            if 0 <= idx < len(children):
-                tree.delete(children[idx])
+            iid = tree_iid_for_record(tree, matched)
+            next_iid = None
+            if iid is not None:
+                kids = list(tree.get_children())
+                if iid in kids:
+                    pos = kids.index(iid)
+                    if pos + 1 < len(kids):
+                        next_iid = kids[pos + 1]
+                    elif pos - 1 >= 0:
+                        next_iid = kids[pos - 1]
+                tree.delete(iid)
+                tree_row_forget(tree, iid)
             records.pop(idx)
-            if records:
-                next_i = min(idx, len(records) - 1)
-                kids = tree.get_children()
-                if kids:
-                    tree.selection_set(kids[next_i])
-                    tree.focus(kids[next_i])
-                    tree.see(kids[next_i])
-                    sidebar.show(records[next_i])
-                else:
-                    sidebar.clear()
+            if next_iid is not None:
+                tree.selection_set(next_iid)
+                tree.focus(next_iid)
+                tree.see(next_iid)
+                nrec = tree_row_record(tree, next_iid)
+                sidebar.show(nrec) if nrec is not None else sidebar.clear()
             else:
                 sidebar.clear("No more rows.")
             return
@@ -196,17 +208,11 @@ class RecentlyBookedTabMixin:
         setattr(self, sidebar_attr, sidebar)
 
         def on_select(_event=None):
-            records: List[Dict[str, Any]] = getattr(self, records_attr)
-            sel = tree.selection()
-            if not sel:
+            record = tree_selected_record(tree)
+            if record is None:
                 sidebar.clear()
                 return
-            try:
-                idx = tree.index(sel[0])
-            except Exception:
-                return
-            if 0 <= idx < len(records):
-                sidebar.show(records[idx])
+            sidebar.show(record)
 
         tree.bind("<<TreeviewSelect>>", on_select)
         return tree, sidebar
@@ -225,6 +231,7 @@ class RecentlyBookedTabMixin:
     ) -> None:
         records.append(record)
         item = tree.insert("", "end", values=self._rb_row_values(record, eth))
+        tree_row_bind(tree, item, record)
         if status_label is not None:
             status_label.configure(text=status_fmt.format(n=len(records)))
         if select_latest:
@@ -374,19 +381,21 @@ class RecentlyBookedTabMixin:
         )
         self._rb_records = shown
         self.rb_tree.delete(*self.rb_tree.get_children())
+        tree_rows_reset(self.rb_tree)
         select_item = None
+        select_rec = None
         for rec in shown:
             item = self.rb_tree.insert(
                 "", "end", values=self._rb_row_values(rec, eth)
             )
+            tree_row_bind(self.rb_tree, item, rec)
             if select_url and str(rec.get("source_url") or "") == select_url:
                 select_item = item
+                select_rec = rec
         if select_item:
             self.rb_tree.selection_set(select_item)
             self.rb_tree.see(select_item)
-            idx = self.rb_tree.index(select_item)
-            if 0 <= idx < len(self._rb_records):
-                self.rb_live_sidebar.show(self._rb_records[idx])
+            self.rb_live_sidebar.show(select_rec)
         elif not shown:
             self.rb_live_sidebar.clear("No rows match filter.")
 
@@ -627,16 +636,11 @@ class RecentlyBookedTabMixin:
         self._rb_mc_records: List[Dict[str, Any]] = []
 
         def on_select(_event=None):
-            sel = self.rb_mc_tree.selection()
-            if not sel:
+            record = tree_selected_record(self.rb_mc_tree)
+            if record is None:
                 self.rb_mc_sidebar.clear()
                 return
-            try:
-                idx = self.rb_mc_tree.index(sel[0])
-            except Exception:
-                return
-            if 0 <= idx < len(self._rb_mc_records):
-                self.rb_mc_sidebar.show(self._rb_mc_records[idx])
+            self.rb_mc_sidebar.show(record)
 
         self.rb_mc_tree.bind("<<TreeviewSelect>>", on_select)
 
@@ -645,18 +649,19 @@ class RecentlyBookedTabMixin:
         record["likely_ethnicity"] = actual
         rid = record.get("id")
         source_url = str(record.get("source_url") or "").strip()
-        # Keep list + tree column in sync.
-        for i, existing in enumerate(self._rb_mc_records):
+        # Keep list + tree column in sync (address the row by iid, not
+        # visual position, so column sorting can't scramble the update).
+        for existing in self._rb_mc_records:
             same_id = record.get("id") and existing.get("id") == record.get("id")
             same_url = source_url and existing.get("source_url") == source_url
             if same_id or same_url or existing is record:
                 existing["likely_ethnicity"] = actual
-                kids = self.rb_mc_tree.get_children()
-                if 0 <= i < len(kids):
-                    vals = list(self.rb_mc_tree.item(kids[i], "values"))
+                iid = tree_iid_for_record(self.rb_mc_tree, existing)
+                if iid is not None:
+                    vals = list(self.rb_mc_tree.item(iid, "values"))
                     if len(vals) >= 3:
                         vals[2] = actual
-                        self.rb_mc_tree.item(kids[i], values=vals)
+                        self.rb_mc_tree.item(iid, values=vals)
                 break
         if rid is None and source_url:
             db = Database(self.db_path)
@@ -695,6 +700,7 @@ class RecentlyBookedTabMixin:
 
             def fill():
                 self.rb_mc_tree.delete(*self.rb_mc_tree.get_children())
+                tree_rows_reset(self.rb_mc_tree)
                 self._rb_mc_records = []
                 for mc in rows:
                     rec = dict(mc.record or {})
@@ -708,7 +714,7 @@ class RecentlyBookedTabMixin:
                     name = (
                         f"{rec.get('first_name') or ''} {rec.get('last_name') or ''}"
                     ).strip() or rec.get("full_name") or "—"
-                    self.rb_mc_tree.insert(
+                    item = self.rb_mc_tree.insert(
                         "",
                         "end",
                         values=(
@@ -720,6 +726,7 @@ class RecentlyBookedTabMixin:
                             rec.get("state") or "",
                         ),
                     )
+                    tree_row_bind(self.rb_mc_tree, item, rec)
                 msg = (
                     f"RecentlyBooked surname analysis: "
                     f"{len(rows)} flags from {base} names."
@@ -846,19 +853,21 @@ class RecentlyBookedTabMixin:
         )
         self._rb_full_records = shown
         self.rb_full_tree.delete(*self.rb_full_tree.get_children())
+        tree_rows_reset(self.rb_full_tree)
         select_item = None
+        select_rec = None
         for rec in shown:
             item = self.rb_full_tree.insert(
                 "", "end", values=self._rb_row_values(rec, eth)
             )
+            tree_row_bind(self.rb_full_tree, item, rec)
             if select_url and str(rec.get("source_url") or "") == select_url:
                 select_item = item
+                select_rec = rec
         if select_item:
             self.rb_full_tree.selection_set(select_item)
             self.rb_full_tree.see(select_item)
-            idx = self.rb_full_tree.index(select_item)
-            if 0 <= idx < len(self._rb_full_records):
-                self.rb_full_sidebar.show(self._rb_full_records[idx])
+            self.rb_full_sidebar.show(select_rec)
         elif not shown:
             self.rb_full_sidebar.clear("No rows match filter.")
 

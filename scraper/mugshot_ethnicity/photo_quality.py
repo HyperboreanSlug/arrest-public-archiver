@@ -19,6 +19,7 @@ KNOWN_PLACEHOLDER_MD5: Set[str] = {
     "5030072b8b5ad8f44f389eb77b3d3d70",
     "8125966493d0b36f032ae9c4d4585210",  # mugshot-placeholder.webp
     "c3786b41be8d238a5f52136bd876bfa4",  # mugshot-placeholder-female.webp
+    "2344828d8440248c173c9d47c1eb13b0",  # RecentlyBooked "no photo" silhouette (303×250)
 }
 
 # Known site-chrome / stub hashes from archive audits (not real faces).
@@ -38,10 +39,13 @@ KNOWN_CHROME_MD5: Set[str] = {
 }
 
 # Silhouette heuristic thresholds (white bg + dark outline).
+# Real mugshots have a high mid-tone fraction (~0.7+), so the ``_MID_FRAC_MAX``
+# gate keeps this from ever matching a face; the size window only needs to be
+# wide enough to include the tiny "no photo" webp stubs (~1.5–2 KB).
 _WHITE_FRAC_MIN = 0.70
 _BLACK_FRAC_MIN = 0.05
 _MID_FRAC_MAX = 0.10
-_STUB_SIZE_MIN = 2_000
+_STUB_SIZE_MIN = 800
 _STUB_SIZE_MAX = 25_000
 
 # URL / path tokens that almost never refer to offender mugshots.

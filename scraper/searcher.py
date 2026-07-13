@@ -158,8 +158,11 @@ def _canonical_race_key(recorded_race: str) -> str:
 
 def format_race_label(recorded_race: str) -> str:
     key = _canonical_race_key(recorded_race)
-    if key == "UNKNOWN":
-        return "Unknown"
+    # Display-only groupings (internal keys stay distinct for classification).
+    if key in ("UNKNOWN", "OTHER"):
+        return "Other/Unknown"
+    if key == "WHITE HISPANIC":
+        return "White"
     if len(key) <= 2:
         return key
     return key.title().replace("Or", "or").replace("/ ", "/")

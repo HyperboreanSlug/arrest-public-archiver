@@ -56,9 +56,11 @@ class QueryMixin:
             q += " AND UPPER(COALESCE(state, '')) = UPPER(?)"
             params.append(state)
         if race and str(race).strip().lower() not in ("", "all", "*"):
-            from scraper.searcher import _canonical_race_key
+            from scraper.searcher import format_race_label
 
-            target = _canonical_race_key(str(race).strip())
+            # Match by merged display label so grouped categories (e.g.
+            # Other/Unknown, White) select every underlying raw variant.
+            target_label = format_race_label(str(race).strip())
             raw_rows = self._conn.execute(
                 """
                 SELECT DISTINCT race FROM arrests
@@ -68,9 +70,10 @@ class QueryMixin:
             matched = [
                 str(r["race"])
                 for r in raw_rows
-                if r and r["race"] and _canonical_race_key(str(r["race"])) == target
+                if r and r["race"] and format_race_label(str(r["race"])) == target_label
             ]
-            if target == "UNKNOWN":
+            include_null = format_race_label("") == target_label
+            if include_null:
                 if matched:
                     ph = ",".join("?" * len(matched))
                     q += (
@@ -153,7 +156,7 @@ class QueryMixin:
         from scraper.searcher import format_race_label
 
         labels = {format_race_label(r) for r in self.distinct_races()}
-        labels.add("Unknown")
+        labels.add("Other/Unknown")
         return sorted(labels, key=lambda s: s.lower())
 
     def distinct_likely_ethnicities(self) -> List[str]:

@@ -19,6 +19,12 @@ from gui_app.widgets import (
     _hpaned,
     _stretch_columns,
     _tree_frame,
+    tree_iid_for_record,
+    tree_row_bind,
+    tree_row_forget,
+    tree_row_record,
+    tree_rows_reset,
+    tree_selected_record,
 )
 from scraper.charge_classifications import category_label
 from scraper.database import Database
@@ -176,23 +182,20 @@ class MisclassifyTabMixin:
         )
 
     def _browse_selected_index(self) -> Optional[int]:
-        sel = self.mc_tree.selection()
-        if not sel or not self._browse_records:
+        record = tree_selected_record(self.mc_tree)
+        if record is None:
             return None
         try:
-            idx = self.mc_tree.index(sel[0])
-        except Exception:
+            return self._browse_records.index(record)
+        except ValueError:
             return None
-        if 0 <= idx < len(self._browse_records):
-            return idx
-        return None
 
     def _browse_on_select(self, _event=None):
-        idx = self._browse_selected_index()
-        if idx is None:
+        record = tree_selected_record(self.mc_tree)
+        if record is None:
             self.browse_sidebar.clear()
             return
-        self.browse_sidebar.show(self._browse_records[idx])
+        self.browse_sidebar.show(record)
 
     def _browse_refresh(self):
         if getattr(self, "_browse_busy", False):
@@ -245,8 +248,10 @@ class MisclassifyTabMixin:
         self._browse_records = list(rows)
         self._mc_results = self._browse_records
         self.mc_tree.delete(*self.mc_tree.get_children())
+        tree_rows_reset(self.mc_tree)
         for rec in self._browse_records:
-            self.mc_tree.insert("", "end", values=self._browse_row_values(rec))
+            item = self.mc_tree.insert("", "end", values=self._browse_row_values(rec))
+            tree_row_bind(self.mc_tree, item, rec)
         self._browse_busy = False
         self.browse_refresh_btn.configure(state="normal")
         self.browse_status.configure(text=f"{len(self._browse_records):,} arrests")
@@ -280,7 +285,8 @@ class MisclassifyTabMixin:
 
         idx = self._browse_find_index(record)
         if idx is not None:
-            self._browse_records[idx]["flags"] = flags_json
+            rec = self._browse_records[idx]
+            rec["flags"] = flags_json
             # Drop from list when it no longer matches the active classification filter.
             want = (self.browse_review.get() or "All").strip().lower()
             keep = True
@@ -291,23 +297,12 @@ class MisclassifyTabMixin:
             elif want == "unreviewed":
                 keep = False
             if not keep:
-                children = self.mc_tree.get_children()
-                if 0 <= idx < len(children):
-                    self.mc_tree.delete(children[idx])
-                self._browse_records.pop(idx)
-                kids = self.mc_tree.get_children()
-                if kids:
-                    next_i = min(idx, len(kids) - 1)
-                    self.mc_tree.selection_set(kids[next_i])
-                    self.mc_tree.focus(kids[next_i])
-                    self.mc_tree.see(kids[next_i])
-                    self.browse_sidebar.show(self._browse_records[next_i])
-                else:
-                    self.browse_sidebar.clear("No rows left.")
+                self._browse_drop_row(idx)
             else:
-                item = self.mc_tree.get_children()[idx]
-                self.mc_tree.item(item, values=self._browse_row_values(self._browse_records[idx]))
-                self.browse_sidebar.show(self._browse_records[idx])
+                iid = tree_iid_for_record(self.mc_tree, rec)
+                if iid is not None:
+                    self.mc_tree.item(iid, values=self._browse_row_values(rec))
+                self.browse_sidebar.show(rec)
 
         name = self._browse_name(record)
         self.browse_status.configure(
@@ -327,29 +322,49 @@ class MisclassifyTabMixin:
                 return
         idx = self._browse_find_index(record)
         if idx is not None:
-            self._browse_records[idx]["likely_ethnicity"] = actual
+            rec = self._browse_records[idx]
+            rec["likely_ethnicity"] = actual
             want = (self.browse_actual_race_filter.get() or "All").strip()
             if want not in ("All", "", None) and want != "(Unset)" and want != actual:
-                children = self.mc_tree.get_children()
-                if 0 <= idx < len(children):
-                    self.mc_tree.delete(children[idx])
-                self._browse_records.pop(idx)
-                kids = self.mc_tree.get_children()
-                if kids:
-                    next_i = min(idx, len(kids) - 1)
-                    self.mc_tree.selection_set(kids[next_i])
-                    self.browse_sidebar.show(self._browse_records[next_i])
-                else:
-                    self.browse_sidebar.clear("No rows left.")
+                self._browse_drop_row(idx)
             else:
-                item = self.mc_tree.get_children()[idx]
-                self.mc_tree.item(
-                    item, values=self._browse_row_values(self._browse_records[idx])
-                )
+                iid = tree_iid_for_record(self.mc_tree, rec)
+                if iid is not None:
+                    self.mc_tree.item(iid, values=self._browse_row_values(rec))
         self.browse_status.configure(
             text=f"Actual race set to {actual}. {len(self._browse_records):,} shown."
         )
         self.log(f"Browse actual race: {self._browse_name(record)} → {actual}")
+
+    def _browse_drop_row(self, idx: int) -> None:
+        """Remove the row at list index *idx* by iid and select a neighbor."""
+        if not (0 <= idx < len(self._browse_records)):
+            return
+        rec = self._browse_records[idx]
+        iid = tree_iid_for_record(self.mc_tree, rec)
+        next_iid = None
+        if iid is not None:
+            kids = list(self.mc_tree.get_children())
+            if iid in kids:
+                pos = kids.index(iid)
+                if pos + 1 < len(kids):
+                    next_iid = kids[pos + 1]
+                elif pos - 1 >= 0:
+                    next_iid = kids[pos - 1]
+            self.mc_tree.delete(iid)
+            tree_row_forget(self.mc_tree, iid)
+        self._browse_records.pop(idx)
+        if next_iid is not None:
+            self.mc_tree.selection_set(next_iid)
+            self.mc_tree.focus(next_iid)
+            self.mc_tree.see(next_iid)
+            nrec = tree_row_record(self.mc_tree, next_iid)
+            if nrec is not None:
+                self.browse_sidebar.show(nrec)
+            else:
+                self.browse_sidebar.clear("No rows left.")
+        else:
+            self.browse_sidebar.clear("No rows left.")
 
     def _browse_export(self):
         if not self._browse_records:
