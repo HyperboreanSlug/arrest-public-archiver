@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Union
 
 from scraper.mugshot_ethnicity.backends import EthnicityBackend, create_backend, list_backend_status
 from scraper.mugshot_ethnicity.models import FaceEthnicityScore
-from scraper.mugshot_ethnicity.photo_quality import placeholder_reason
+from scraper.mugshot_ethnicity.photo_quality import placeholder_reason, resolve_photo_path
 
 
 class BackendUnavailableError(RuntimeError):
@@ -65,6 +65,9 @@ class MugshotEthnicityScorer:
                 face_detected=False,
                 error="empty photo path",
             )
+        resolved = resolve_photo_path(path)
+        if resolved is not None:
+            path = str(resolved)
         key = str(Path(path).resolve()) if Path(path).exists() else path
         if self._cache_enabled and key in self._cache:
             return self._cache[key]

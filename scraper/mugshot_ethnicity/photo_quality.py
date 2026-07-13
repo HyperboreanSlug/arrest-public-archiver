@@ -11,7 +11,7 @@ import hashlib
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Mapping, Optional, Set, Tuple, Union
+from typing import Any, Mapping, Optional, Sequence, Set, Tuple, Union
 
 # Byte-identical CO "no photo" silhouette (299×289 L JPEG, ~7.2 KB).
 # RecentlyBooked default mugshot stubs (~1–2 KB webp).
@@ -335,3 +335,47 @@ def bytes_non_mugshot_reason(data: bytes, *, url: str = "", ext: str = "") -> Op
 def clear_placeholder_cache() -> None:
     """Drop the path classification cache (tests / after photo re-download)."""
     _classify_cached.cache_clear()
+
+
+def resolve_photo_path(
+    raw: Union[str, Path, None],
+    *,
+    extra_roots: Optional[Sequence[Union[str, Path]]] = None,
+) -> Optional[Path]:
+    """Resolve a mugshot path against cwd and optional project roots."""
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    roots: list[Path] = [Path.cwd()]
+    for root in extra_roots or ():
+        try:
+            roots.append(Path(root))
+        except (TypeError, ValueError):
+            continue
+    # Default project root: repo root (scraper/mugshot_ethnicity -> scraper -> repo)
+    try:
+        roots.append(Path(__file__).resolve().parents[2])
+    except (IndexError, OSError):
+        pass
+    seen: set[str] = set()
+    candidates: list[Path] = []
+    for base in roots:
+        for variant in (s, s.replace("\\", "/"), s.replace("/", "\\")):
+            for p in (Path(variant), base / variant, base / variant.replace("\\", "/")):
+                key = str(p)
+                if key in seen:
+                    continue
+                seen.add(key)
+                candidates.append(p)
+    name = Path(s).name
+    if name and name != s:
+        for base in roots:
+            candidates.append(base / "data" / "photos" / name)
+            candidates.append(base / "data" / "photos" / "recentlybooked" / name)
+    for p in candidates:
+        try:
+            if p.is_file() and p.stat().st_size > 0:
+                return p.resolve()
+        except OSError:
+            continue
+    return None

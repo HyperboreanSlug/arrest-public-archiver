@@ -61,6 +61,33 @@ class DeepfaceScanMixin:
         if "offender_id" in cols and "arrest_id" not in cols:
             # Leave legacy; create views via alias methods
             pass
+        # Lightweight forward-migration: add any columns the current code needs
+        # that an older DB may lack (guarded per-column so re-runs are no-ops).
+        _wanted_cols = {
+            "photo_path": "TEXT",
+            "photo_fingerprint": "TEXT",
+            "top_label": "TEXT",
+            "top_confidence": "REAL",
+            "scores_json": "TEXT",
+            "backend": "TEXT",
+            "detector": "TEXT",
+            "face_detected": "INTEGER DEFAULT 1",
+            "error": "TEXT",
+            "is_hit": "INTEGER DEFAULT 0",
+            "recorded_race": "TEXT",
+            "predicted_label": "TEXT",
+            "severity": "TEXT",
+            "reason": "TEXT",
+            "scan_min_conf": "REAL",
+        }
+        for _name, _decl in _wanted_cols.items():
+            if _name not in cols:
+                try:
+                    cur.execute(
+                        f"ALTER TABLE deepface_scans ADD COLUMN {_name} {_decl}"
+                    )
+                except sqlite3.OperationalError:
+                    pass
         cur.execute(
             "CREATE INDEX IF NOT EXISTS idx_deepface_scans_hit "
             "ON deepface_scans(is_hit) WHERE is_hit = 1"
@@ -191,23 +218,33 @@ class DeepfaceScanMixin:
             return None
         return self._deepface_scan_row_to_dict(row)
 
-    def list_deepface_hits(
+    def _list_deepface_scan_rows(
         self,
         *,
         limit: int = 0,
         min_confidence: float = 0.0,
         state: Optional[str] = None,
         source_system: Optional[str] = None,
+        hits_only: bool = True,
+        face_scored_only: bool = False,
     ) -> List[Dict[str, Any]]:
+        """Join stored scan rows with arrest records for Reports / Scan UI."""
         self._ensure_deepface_scans_table()
         sql = """
             SELECT s.arrest_id
             FROM deepface_scans s
             JOIN arrests a ON a.id = s.arrest_id
-            WHERE s.is_hit = 1
-              AND COALESCE(s.top_confidence, 0) >= ?
+            WHERE COALESCE(s.top_confidence, 0) >= ?
         """
         params: list = [float(min_confidence or 0.0)]
+        if hits_only:
+            sql += " AND s.is_hit = 1"
+        if face_scored_only:
+            sql += (
+                " AND COALESCE(s.face_detected, 1) = 1"
+                " AND COALESCE(s.top_label, '') != ''"
+                " AND LOWER(COALESCE(s.top_label, '')) NOT IN ('unknown', '')"
+            )
         if state:
             sql += " AND UPPER(a.state) = UPPER(?)"
             params.append(state)
@@ -226,22 +263,60 @@ class DeepfaceScanMixin:
             if not scan or not rec:
                 continue
             rec = dict(rec)
+            is_hit = bool(scan.get("is_hit"))
             rec["_deepface"] = {
                 "top_label": scan.get("top_label"),
                 "top_confidence": scan.get("top_confidence"),
                 "scores": scan.get("scores") or {},
                 "backend": scan.get("backend"),
                 "detector": scan.get("detector"),
-                "is_hit": scan.get("is_hit"),
+                "is_hit": is_hit,
                 "severity": scan.get("severity"),
                 "reason": scan.get("reason"),
                 "scanned_at": scan.get("scanned_at"),
                 "predicted_label": scan.get("predicted_label"),
                 "recorded_race_scan": scan.get("recorded_race"),
             }
-            rec["_deepface_is_hit"] = True
+            rec["_deepface_is_hit"] = is_hit
             out.append(rec)
         return out
+
+    def list_deepface_scored(
+        self,
+        *,
+        limit: int = 0,
+        min_confidence: float = 0.0,
+        state: Optional[str] = None,
+        source_system: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """All stored face scores (not only rows flagged ``is_hit`` at scan time)."""
+        return self._list_deepface_scan_rows(
+            limit=limit,
+            min_confidence=min_confidence,
+            state=state,
+            source_system=source_system,
+            hits_only=False,
+            face_scored_only=True,
+        )
+
+    def list_deepface_hits(
+        self,
+        *,
+        limit: int = 0,
+        min_confidence: float = 0.0,
+        state: Optional[str] = None,
+        source_system: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        rows = self._list_deepface_scan_rows(
+            limit=limit,
+            min_confidence=min_confidence,
+            state=state,
+            source_system=source_system,
+            hits_only=True,
+        )
+        for rec in rows:
+            rec["_deepface_is_hit"] = True
+        return rows
 
     def clear_deepface_scans(
         self,
