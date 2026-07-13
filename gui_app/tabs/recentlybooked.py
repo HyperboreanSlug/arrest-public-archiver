@@ -243,9 +243,26 @@ class RecentlyBookedTabMixin:
 
     @staticmethod
     def _rb_has_photo(record: Dict[str, Any]) -> bool:
-        if str(record.get("photo_path") or "").strip():
-            return True
-        return bool(str(record.get("photo_url") or "").strip())
+        """True only for a real mugshot — not missing or placeholder stubs."""
+        from scraper.mugshot_ethnicity.photo_quality import (
+            is_placeholder_photo,
+            is_placeholder_photo_url,
+        )
+
+        url = str(record.get("photo_url") or "").strip()
+        path = str(record.get("photo_path") or "").strip()
+        if url and is_placeholder_photo_url(url):
+            return False
+        if path:
+            try:
+                from pathlib import Path
+
+                p = Path(path)
+                if p.is_file():
+                    return not is_placeholder_photo(p)
+            except Exception:
+                pass
+        return bool(url)
 
     @classmethod
     def _rb_filter_rows(
@@ -287,14 +304,14 @@ class RecentlyBookedTabMixin:
             command=self._rb_live_on_auto_toggle,
         )
         self.rb_live_auto.pack(side="left", padx=8)
-        self.rb_live_hide_no_race = False
-        self.rb_live_filter_btn = ctk.CTkButton(
+        self.rb_live_hide_no_race_var = ctk.BooleanVar(value=False)
+        self.rb_live_hide_no_race = ctk.CTkCheckBox(
             bar,
             text="Hide no race",
-            width=110,
-            command=self._rb_live_toggle_no_race_filter,
+            variable=self.rb_live_hide_no_race_var,
+            command=self._rb_live_on_race_filter_toggle,
         )
-        self.rb_live_filter_btn.pack(side="left", padx=5)
+        self.rb_live_hide_no_race.pack(side="left", padx=5)
         self.rb_live_hide_no_photo_var = ctk.BooleanVar(value=True)
         self.rb_live_hide_no_photo = ctk.CTkCheckBox(
             bar,
@@ -303,6 +320,7 @@ class RecentlyBookedTabMixin:
             command=self._rb_live_on_photo_filter_toggle,
         )
         self.rb_live_hide_no_photo.pack(side="left", padx=5)
+        self.rb_live_hide_no_photo.select()
         self.rb_live_status = ctk.CTkLabel(
             bar,
             text="Live feed auto-imports every booking it shows.",
@@ -331,11 +349,15 @@ class RecentlyBookedTabMixin:
             self.log("Live feed: auto-update off.")
 
     def _rb_live_filter_flags(self) -> tuple[bool, bool]:
+        hide_race = bool(
+            getattr(self, "rb_live_hide_no_race_var", None)
+            and self.rb_live_hide_no_race_var.get()
+        )
         hide_photo = bool(
             getattr(self, "rb_live_hide_no_photo_var", None)
             and self.rb_live_hide_no_photo_var.get()
         )
-        return bool(self.rb_live_hide_no_race), hide_photo
+        return hide_race, hide_photo
 
     def _rb_live_update_filter_status(self, *, log: bool = True) -> None:
         shown = len(self._rb_records)
@@ -350,12 +372,7 @@ class RecentlyBookedTabMixin:
         if log:
             self.log(f"Live feed filter: {mode} ({shown}/{total}).")
 
-    def _rb_live_toggle_no_race_filter(self):
-        self.rb_live_hide_no_race = not self.rb_live_hide_no_race
-        if self.rb_live_hide_no_race:
-            self.rb_live_filter_btn.configure(text="Show no race")
-        else:
-            self.rb_live_filter_btn.configure(text="Hide no race")
+    def _rb_live_on_race_filter_toggle(self):
         self._rb_rebuild_live_tree()
         self._rb_live_update_filter_status()
 
@@ -750,14 +767,14 @@ class RecentlyBookedTabMixin:
         ctk.CTkButton(
             bar, text="Cancel", command=lambda: setattr(self, "rb_cancel", True)
         ).pack(side="left", padx=5)
-        self.rb_full_hide_no_race = False
-        self.rb_full_filter_btn = ctk.CTkButton(
+        self.rb_full_hide_no_race_var = ctk.BooleanVar(value=False)
+        self.rb_full_hide_no_race = ctk.CTkCheckBox(
             bar,
             text="Hide no race",
-            width=110,
-            command=self._rb_full_toggle_no_race_filter,
+            variable=self.rb_full_hide_no_race_var,
+            command=self._rb_full_on_race_filter_toggle,
         )
-        self.rb_full_filter_btn.pack(side="left", padx=5)
+        self.rb_full_hide_no_race.pack(side="left", padx=5)
         self.rb_full_hide_no_photo_var = ctk.BooleanVar(value=True)
         self.rb_full_hide_no_photo = ctk.CTkCheckBox(
             bar,
@@ -766,6 +783,7 @@ class RecentlyBookedTabMixin:
             command=self._rb_full_on_photo_filter_toggle,
         )
         self.rb_full_hide_no_photo.pack(side="left", padx=5)
+        self.rb_full_hide_no_photo.select()
         self.rb_full_status = ctk.CTkLabel(
             bar,
             text="Multi-thread counties; set Threads + Delay per request.",
@@ -782,11 +800,15 @@ class RecentlyBookedTabMixin:
         )
 
     def _rb_full_filter_flags(self) -> tuple[bool, bool]:
+        hide_race = bool(
+            getattr(self, "rb_full_hide_no_race_var", None)
+            and self.rb_full_hide_no_race_var.get()
+        )
         hide_photo = bool(
             getattr(self, "rb_full_hide_no_photo_var", None)
             and self.rb_full_hide_no_photo_var.get()
         )
-        return bool(self.rb_full_hide_no_race), hide_photo
+        return hide_race, hide_photo
 
     def _rb_full_update_filter_status(self, *, log: bool = True) -> None:
         shown = len(self._rb_full_records)
@@ -801,12 +823,7 @@ class RecentlyBookedTabMixin:
         if log:
             self.log(f"Full scrape filter: {mode} ({shown}/{total}).")
 
-    def _rb_full_toggle_no_race_filter(self):
-        self.rb_full_hide_no_race = not self.rb_full_hide_no_race
-        if self.rb_full_hide_no_race:
-            self.rb_full_filter_btn.configure(text="Show no race")
-        else:
-            self.rb_full_filter_btn.configure(text="Hide no race")
+    def _rb_full_on_race_filter_toggle(self):
         self._rb_rebuild_full_tree()
         self._rb_full_update_filter_status()
 

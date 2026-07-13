@@ -14,8 +14,11 @@ from pathlib import Path
 from typing import Optional, Set, Tuple, Union
 
 # Byte-identical CO "no photo" silhouette (299×289 L JPEG, ~7.2 KB).
+# RecentlyBooked default mugshot stubs (~1–2 KB webp).
 KNOWN_PLACEHOLDER_MD5: Set[str] = {
     "5030072b8b5ad8f44f389eb77b3d3d70",
+    "8125966493d0b36f032ae9c4d4585210",  # mugshot-placeholder.webp
+    "c3786b41be8d238a5f52136bd876bfa4",  # mugshot-placeholder-female.webp
 }
 
 # Known site-chrome / stub hashes from archive audits (not real faces).
@@ -78,6 +81,9 @@ def url_looks_like_chrome(url: str) -> bool:
     low = u.lower()
     if low.startswith("data:"):
         return True
+    # RecentlyBooked "no photo on file" stubs
+    if "mugshot-placeholder" in low:
+        return True
     if _CHROME_URL_RE.search(low):
         # Dedicated mugshot endpoints still win even if path is noisy
         if any(
@@ -99,6 +105,11 @@ def url_looks_like_chrome(url: str) -> bool:
             return False
         return True
     return False
+
+
+def is_placeholder_photo_url(url: Optional[str]) -> bool:
+    """True when a photo URL is a known no-photo / chrome stub."""
+    return url_looks_like_chrome(str(url or ""))
 
 
 def _heuristic_silhouette(path: Path) -> bool:
