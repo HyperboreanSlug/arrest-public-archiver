@@ -24,6 +24,8 @@ _PANEL = (26, 26, 32, 255)
 _TEXT = (236, 236, 241, 255)
 _MUTED = (155, 155, 168, 255)
 _ACCENT = (232, 168, 124, 255)
+_BANNER_RED = (180, 28, 36, 255)
+_BANNER_TEXT = (255, 255, 255, 255)
 
 
 def _desktop_dir() -> Path:
@@ -195,11 +197,14 @@ def _wrap_text(
     return lines
 
 
-def _is_parchment(r: int, g: int, b: int) -> bool:
-    """True for the seal's tan/beige backdrop (not navy or gold artwork)."""
+def _is_backdrop(r: int, g: int, b: int) -> bool:
+    """True for seal square backdrop (black or parchment), not navy/gold art."""
+    # Solid black plate behind the circular seal.
+    if r <= 28 and g <= 28 and b <= 28:
+        return True
     mx, mn = max(r, g, b), min(r, g, b)
     avg = (r + g + b) / 3.0
-    # Muted mid-tan: channels close together, warm, mid luminance.
+    # Older parchment/tan plate.
     if mx - mn <= 70 and 120 <= avg <= 230 and r >= b - 5 and g >= b - 10:
         return True
     return False
@@ -221,14 +226,14 @@ def _is_rope_gold(r: int, g: int, b: int) -> bool:
 
 @lru_cache(maxsize=4)
 def _prepared_seal(path_str: str, mtime_ns: int) -> Image.Image:
-    """Load seal with parchment + outer rope made transparent."""
+    """Load seal with backdrop + outer rope made transparent."""
     import math
 
     im = Image.open(path_str).convert("RGBA")
     w, h = im.size
     cx, cy = (w - 1) / 2.0, (h - 1) / 2.0
     max_r = min(cx, cy)
-    # Drop the outer rope ring + parchment; keep navy disc + artwork.
+    # Drop outer rope + square backdrop; keep navy disc + artwork.
     rope_start = max_r * 0.875
     px = im.load()
     for y in range(h):
@@ -237,7 +242,7 @@ def _prepared_seal(path_str: str, mtime_ns: int) -> Image.Image:
             if a == 0:
                 continue
             dist = math.hypot(x - cx, y - cy)
-            if dist > rope_start or _is_parchment(r, g, b):
+            if dist > rope_start or _is_backdrop(r, g, b):
                 px[x, y] = (r, g, b, 0)
                 continue
             # Any leftover rope fragments just inside the cut.
@@ -274,7 +279,8 @@ def _draw_seal_watermark(
     *,
     photo_box: Tuple[int, int, int, int],
     text: str = _WATERMARK,
-    opacity: float = 0.30,
+    seal_opacity: float = 0.02,
+    text_opacity: float = 0.10,
 ) -> None:
     """Center the Department seal on the mugshot with handle text beneath it."""
     overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
@@ -284,26 +290,23 @@ def _draw_seal_watermark(
 
     seal = _load_seal()
     if seal is not None:
-        # Cover the entire mugshot rectangle (scale to cover, center, clip).
-        scale = max(photo_w / seal.width, photo_h / seal.height)
-        new_w = max(1, int(round(seal.width * scale)))
-        new_h = max(1, int(round(seal.height * scale)))
-        seal = seal.resize((new_w, new_h), Image.Resampling.LANCZOS)
-        seal = _with_opacity(seal, opacity)
-        layer = Image.new("RGBA", (photo_w, photo_h), (0, 0, 0, 0))
-        layer.paste(
+        # Cover the mugshot (scale-to-cover + clip). alpha_composite keeps
+        # the intended opacity (paste(..., mask=self) multiplies alpha down).
+        seal = ImageOps.fit(
             seal,
-            ((photo_w - new_w) // 2, (photo_h - new_h) // 2),
-            seal,
+            (photo_w, photo_h),
+            method=Image.Resampling.LANCZOS,
+            centering=(0.5, 0.5),
         )
-        overlay.paste(layer, (left, top), layer)
+        seal = _with_opacity(seal, seal_opacity)
+        overlay.alpha_composite(seal, dest=(left, top))
         text_top = top + photo_h - max(48, photo_h // 12)
     else:
         text_top = top + photo_h // 2
 
     draw = ImageDraw.Draw(overlay)
     font = _load_font(max(36, photo_w // 14), bold=True)
-    alpha = max(1, int(round(255 * opacity)))
+    alpha = max(1, int(round(255 * text_opacity)))
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     tx = left + (photo_w - tw) // 2
@@ -324,8 +327,10 @@ def render_export_card(record: Mapping[str, Any]) -> Image.Image:
     mug = _load_mugshot(record, photo_box).convert("RGBA")
     canvas.paste(mug, (margin, margin), mug if mug.mode == "RGBA" else None)
 
-    # Seal + @handle watermark filling the mugshot at 30% opacity
-    _draw_seal_watermark(canvas, photo_box=photo_rect, opacity=0.30)
+    # Seal at 2%; mugshot @handle at 10%
+    _draw_seal_watermark(
+        canvas, photo_box=photo_rect, seal_opacity=0.02, text_opacity=0.10
+    )
 
     # Accent bar under photo
     bar_y = margin + _PHOTO_H + 18
@@ -343,6 +348,7 @@ def render_export_card(record: Mapping[str, Any]) -> Image.Image:
     name_font = _load_font(54, bold=True)
     label_font = _load_font(26)
     value_font = _load_font(34, bold=True)
+    banner_font = _load_font(48, bold=True)
 
     y = bar_y + 28
     max_text_w = _CARD_W - margin * 2
@@ -350,6 +356,41 @@ def render_export_card(record: Mapping[str, Any]) -> Image.Image:
     for line in _wrap_text(draw, name, name_font, max_text_w)[:2]:
         draw.text((margin, y), line, font=name_font, fill=_TEXT)
         y += 62
+
+    # Big red race banner
+    y += 12
+    banner_h = 108
+    banner_pad_x = 28
+    draw.rounded_rectangle(
+        (margin, y, _CARD_W - margin, y + banner_h),
+        radius=14,
+        fill=_BANNER_RED,
+    )
+    banner_label_font = _load_font(24, bold=True)
+    label = "RACE MARKED"
+    lb = draw.textbbox((0, 0), label, font=banner_label_font)
+    lw = lb[2] - lb[0]
+    draw.text(
+        ((_CARD_W - lw) // 2, y + 14),
+        label,
+        font=banner_label_font,
+        fill=(255, 220, 220, 255),
+    )
+    race_lines = _wrap_text(draw, race.upper(), banner_font, max_text_w - banner_pad_x * 2)[:2]
+    line_h = 50 if len(race_lines) > 1 else 54
+    text_block_h = line_h * len(race_lines)
+    ty = y + 42 + max(0, (banner_h - 42 - text_block_h) // 2)
+    for line in race_lines:
+        bbox = draw.textbbox((0, 0), line, font=banner_font)
+        tw = bbox[2] - bbox[0]
+        draw.text(
+            ((_CARD_W - tw) // 2, ty),
+            line,
+            font=banner_font,
+            fill=_BANNER_TEXT,
+        )
+        ty += line_h
+    y += banner_h + 22
 
     def section(label: str, value: str, top: int) -> int:
         draw.text((margin, top), label.upper(), font=label_font, fill=_MUTED)
@@ -359,7 +400,6 @@ def render_export_card(record: Mapping[str, Any]) -> Image.Image:
             top += 42
         return top + 10
 
-    y = section("Race marked", race, y + 8)
     y = section("Arrest location", location, y)
     y = section("Crime", crime, y)
 
