@@ -99,16 +99,18 @@ def _resolve_photo_path(raw: Any) -> Optional[Path]:
 class RecordSidebar:
     """Right-hand photo + details pane bound to a tree selection."""
 
-    def __init__(self, parent: Any, *, photo_size: tuple[int, int] = (200, 200)) -> None:
+    def __init__(self, parent: Any, *, photo_size: tuple[int, int] = (320, 320)) -> None:
         self.photo_size = photo_size
-        self.frame = ctk.CTkFrame(parent, fg_color=C["panel"], width=360, corner_radius=10)
+        self.frame = ctk.CTkFrame(parent, fg_color=C["panel"], width=380, corner_radius=10)
         self.frame.grid_propagate(False)
         self.frame.grid_columnconfigure(0, weight=1)
-        self.frame.grid_rowconfigure(6, weight=1)  # details row expands
+        # Photo row grows; details keep a share of leftover space.
+        self.frame.grid_rowconfigure(1, weight=3)
+        self.frame.grid_rowconfigure(7, weight=2)
 
         ctk.CTkLabel(
             self.frame, text="Details", font=FONT_BOLD, text_color=C["text"]
-        ).grid(row=0, column=0, sticky="w", padx=12, pady=(12, 4))
+        ).grid(row=0, column=0, sticky="w", padx=12, pady=(10, 2))
 
         self.photo = ctk.CTkLabel(
             self.frame,
@@ -119,17 +121,17 @@ class RecordSidebar:
             fg_color=C["elevated"],
             corner_radius=8,
         )
-        self.photo.grid(row=1, column=0, padx=12, pady=(4, 8), sticky="n")
+        self.photo.grid(row=1, column=0, padx=10, pady=(2, 6), sticky="nsew")
 
         btn_row = ctk.CTkFrame(self.frame, fg_color="transparent")
-        btn_row.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 6))
+        btn_row.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 4))
         btn_row.grid_columnconfigure((0, 1), weight=1)
         self.open_btn = ctk.CTkButton(
             btn_row,
             text="Open source URL",
             command=self._open_source,
             state="disabled",
-            height=32,
+            height=30,
         )
         self.open_btn.grid(row=0, column=0, sticky="ew", padx=(0, 4))
         self.open_photo_btn = ctk.CTkButton(
@@ -137,7 +139,7 @@ class RecordSidebar:
             text="Open photo",
             command=self._open_photo_file,
             state="disabled",
-            height=32,
+            height=30,
         )
         self.open_photo_btn.grid(row=0, column=1, sticky="ew", padx=(4, 0))
 
@@ -152,7 +154,7 @@ class RecordSidebar:
             text_color="#0c0c0e",
             command=lambda: self._emit_verdict("correct"),
             state="disabled",
-            height=32,
+            height=30,
         )
         self.correct_btn.grid(row=0, column=0, sticky="ew", padx=(0, 4))
         self.incorrect_btn = ctk.CTkButton(
@@ -163,17 +165,29 @@ class RecordSidebar:
             text_color="#0c0c0e",
             command=lambda: self._emit_verdict("incorrect"),
             state="disabled",
-            height=32,
+            height=30,
         )
         self.incorrect_btn.grid(row=0, column=1, sticky="ew", padx=(4, 0))
+
+        self.race_banner = ctk.CTkLabel(
+            self.frame,
+            text="Marked race: —",
+            font=FONT_BOLD,
+            text_color=C["text"],
+            fg_color=C["accent_dim"],
+            corner_radius=8,
+            height=40,
+            anchor="center",
+        )
+        self.race_banner.grid(row=4, column=0, sticky="ew", padx=12, pady=(2, 4))
 
         self.verdict_status = ctk.CTkLabel(
             self.frame, text="", font=FONT_SM, text_color=C["muted"], anchor="w"
         )
-        self.verdict_status.grid(row=4, column=0, sticky="ew", padx=12, pady=(0, 4))
+        self.verdict_status.grid(row=5, column=0, sticky="ew", padx=12, pady=(0, 2))
 
         actual_row = ctk.CTkFrame(self.frame, fg_color="transparent")
-        actual_row.grid(row=5, column=0, sticky="ew", padx=12, pady=(0, 6))
+        actual_row.grid(row=6, column=0, sticky="ew", padx=12, pady=(0, 4))
         actual_row.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(
             actual_row, text="Actual race", font=FONT_SM, text_color=C["muted"]
@@ -194,9 +208,9 @@ class RecordSidebar:
             font=FONT_SM,
             wrap="word",
             activate_scrollbars=True,
-            height=220,
+            height=140,
         )
-        self.details.grid(row=6, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        self.details.grid(row=7, column=0, sticky="nsew", padx=12, pady=(0, 10))
         self.details.insert("end", "Select a row to preview mugshot and booking fields.")
         self.details.configure(state="disabled")
 
@@ -209,6 +223,8 @@ class RecordSidebar:
         self._ui_q: queue.Queue[Callable[[], None]] = queue.Queue()
         self._pumping = False
         self._syncing_actual = False
+        self._resize_after: Any = None
+        self.frame.bind("<Configure>", self._on_sidebar_configure)
 
     def bind_after(self, after_fn: Callable[..., Any]) -> None:
         """Provide the host window's ``after`` for thread-safe UI updates."""
@@ -278,6 +294,51 @@ class RecordSidebar:
     def _schedule(self, fn: Callable[[], None]) -> None:
         self._ui_q.put(fn)
 
+    def _on_sidebar_configure(self, _event=None) -> None:
+        if not self._after:
+            return
+        if self._resize_after is not None:
+            try:
+                self.frame.after_cancel(self._resize_after)
+            except Exception:
+                pass
+        self._resize_after = self.frame.after(120, self._apply_photo_slot_size)
+
+    def _apply_photo_slot_size(self) -> None:
+        self._resize_after = None
+        size = self._target_photo_size()
+        if size == self.photo_size:
+            return
+        self.photo_size = size
+        self.photo.configure(width=size[0], height=size[1])
+        if self._record:
+            self._load_photo(self._record, self._load_token)
+
+    def _target_photo_size(self) -> tuple[int, int]:
+        """Largest square that fits the photo row without crushing controls."""
+        try:
+            fw = int(self.frame.winfo_width())
+            fh = int(self.frame.winfo_height())
+        except Exception:
+            return self.photo_size
+        if fw < 80 or fh < 80:
+            return self.photo_size
+        # Reserve space for header + buttons + banner + actual race + details.
+        side = min(fw - 20, max(180, fh - 320))
+        side = max(200, min(side, 480))
+        return (side, side)
+
+    @staticmethod
+    def _marked_race_text(record: Optional[Dict[str, Any]]) -> str:
+        from scraper.searcher import format_race_label
+
+        if not record:
+            return "Marked race: —"
+        label = format_race_label(str(record.get("race") or "").strip())
+        if not label or label == "—":
+            label = "Unknown"
+        return f"Marked race: {label}"
+
     def clear(self, message: str = "Select a record") -> None:
         self._load_token += 1
         self._record = None
@@ -288,6 +349,7 @@ class RecordSidebar:
         self.correct_btn.configure(state="disabled")
         self.incorrect_btn.configure(state="disabled")
         self.actual_race.configure(state="disabled")
+        self.race_banner.configure(text="Marked race: —")
         self.verdict_status.configure(text="", text_color=C["muted"])
         self.details.configure(state="normal")
         self.details.delete("1.0", "end")
@@ -301,7 +363,10 @@ class RecordSidebar:
         self._record = dict(record)
         self._load_token += 1
         token = self._load_token
+        self.photo_size = self._target_photo_size()
+        self.photo.configure(width=self.photo_size[0], height=self.photo_size[1])
         self._fill_text(self._record)
+        self.race_banner.configure(text=self._marked_race_text(self._record))
         has_url = bool(str(self._record.get("source_url") or "").strip())
         self.open_btn.configure(state="normal" if has_url else "disabled")
         photo_path = _resolve_photo_path(self._record.get("photo_path"))

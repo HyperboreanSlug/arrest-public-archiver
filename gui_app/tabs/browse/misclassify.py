@@ -127,7 +127,7 @@ class MisclassifyTabMixin:
         self.browse_sidebar.bind_verdict(self._browse_sidebar_verdict)
         self.browse_sidebar.bind_actual_race(self._browse_sidebar_actual_race)
         pane.add(left, minsize=360, stretch="always")
-        pane.add(self.browse_sidebar.frame, minsize=360, stretch="always")
+        pane.add(self.browse_sidebar.frame, minsize=400, stretch="always")
 
         self._browse_records: List[Dict[str, Any]] = []
         self._mc_results = self._browse_records  # back-compat alias
