@@ -33,6 +33,8 @@ class QueryMixin:
         name: Optional[str] = None,
         state: Optional[str] = None,
         race: Optional[str] = None,
+        likely_ethnicity: Optional[str] = None,
+        ethnicity_review: Optional[str] = None,
         charge_category: Optional[str] = None,
         source_system: Optional[str] = None,
         limit: int = 1000,
@@ -53,18 +55,81 @@ class QueryMixin:
         if state and state.upper() != "ALL":
             q += " AND UPPER(COALESCE(state, '')) = UPPER(?)"
             params.append(state)
-        if race:
+        if race and str(race).strip().lower() not in ("", "all", "*"):
             q += " AND UPPER(COALESCE(race, '')) = UPPER(?)"
-            params.append(race)
+            params.append(str(race).strip())
+        if likely_ethnicity and str(likely_ethnicity).strip().lower() not in (
+            "",
+            "all",
+            "*",
+        ):
+            actual = str(likely_ethnicity).strip()
+            if actual.lower() in ("unset", "none", "(unset)"):
+                q += (
+                    " AND (likely_ethnicity IS NULL OR TRIM(likely_ethnicity) = '')"
+                )
+            else:
+                q += " AND LOWER(COALESCE(likely_ethnicity, '')) = LOWER(?)"
+                params.append(actual)
         if charge_category and str(charge_category).lower() not in ("all", "", "*"):
             q += " AND LOWER(COALESCE(charge_category, '')) = LOWER(?)"
             params.append(charge_category)
         if source_system and str(source_system).lower() not in ("all", "", "*"):
             q += " AND LOWER(COALESCE(source_system, '')) = LOWER(?)"
             params.append(source_system)
-        q += " ORDER BY arrest_date DESC, last_name ASC LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
-        return [dict(r) for r in self._conn.execute(q, params).fetchall()]
+        # Over-fetch when filtering review status in Python (JSON flags).
+        review = (ethnicity_review or "").strip().lower()
+        fetch_limit = limit
+        if review and review not in ("all", "*", ""):
+            fetch_limit = max(limit * 5, 5000) if limit else 0
+        if fetch_limit:
+            q += " ORDER BY arrest_date DESC, last_name ASC LIMIT ? OFFSET ?"
+            params.extend([fetch_limit, offset])
+        else:
+            q += " ORDER BY arrest_date DESC, last_name ASC"
+            if offset:
+                q += " LIMIT -1 OFFSET ?"
+                params.append(offset)
+        rows = [dict(r) for r in self._conn.execute(q, params).fetchall()]
+        if review and review not in ("all", "*", ""):
+            from scraper.searcher import ethnicity_review_verdict
+
+            filtered = []
+            for rec in rows:
+                verdict = ethnicity_review_verdict(rec)
+                if review in ("unreviewed", "none", "unset"):
+                    if not verdict:
+                        filtered.append(rec)
+                elif verdict == review:
+                    filtered.append(rec)
+                if limit and len(filtered) >= limit:
+                    break
+            rows = filtered
+        elif limit and len(rows) > limit:
+            rows = rows[:limit]
+        return rows
+
+    def distinct_races(self) -> List[str]:
+        rows = self._conn.execute(
+            """
+            SELECT DISTINCT TRIM(race) AS race
+            FROM arrests
+            WHERE race IS NOT NULL AND TRIM(race) != ''
+            ORDER BY race COLLATE NOCASE
+            """
+        ).fetchall()
+        return [str(r["race"]) for r in rows if r and r["race"]]
+
+    def distinct_likely_ethnicities(self) -> List[str]:
+        rows = self._conn.execute(
+            """
+            SELECT DISTINCT TRIM(likely_ethnicity) AS eth
+            FROM arrests
+            WHERE likely_ethnicity IS NOT NULL AND TRIM(likely_ethnicity) != ''
+            ORDER BY eth COLLATE NOCASE
+            """
+        ).fetchall()
+        return [str(r["eth"]) for r in rows if r and r["eth"]]
 
     def get_charge_category_distribution(self) -> List[Dict[str, Any]]:
         from scraper.charge_classifications import category_label
