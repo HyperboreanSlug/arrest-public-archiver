@@ -377,7 +377,7 @@ class MisclassifyTabMixin:
                 out.writerow(
                     [
                         self._browse_name(rec),
-                        rec.get("race") or "",
+                        format_race_label(rec.get("race") or ""),
                         rec.get("likely_ethnicity") or "",
                         self._browse_review_label(rec),
                         rec.get("charge_category") or "",

@@ -127,14 +127,10 @@ def format_state_display(record: Optional[Dict[str, Any]]) -> str:
 
 
 def format_race_display(race: Optional[str]) -> str:
-    """Display race in normal case (not ALL CAPS), e.g. WHITE → White."""
+    """Display race as a merged label (B/Black → Black, U/Unknown → Unknown)."""
     raw = (race or "").strip()
     if not raw or raw == "—":
         return "—"
-    # Keep short codes as-is
-    if len(raw) <= 2:
-        return raw.upper()
-    # Prefer shared formatter when available
     try:
         from scraper.searcher import format_race_label
         return format_race_label(raw)
@@ -402,13 +398,15 @@ def bind_tree_scroll_isolation(tree: ttk.Treeview, wrap: ctk.CTkFrame) -> None:
 
 def misclass_race_bucket(recorded_race: Optional[str]) -> str:
     """Map a recorded race label to Black / White / Other for Statistics pie."""
-    key = (recorded_race or "").strip().upper()
-    if key in ("WHITE", "W", "CAUCASIAN", "CAUCASION"):
+    try:
+        from scraper.searcher import _canonical_race_key
+
+        key = _canonical_race_key(recorded_race or "")
+    except Exception:
+        key = (recorded_race or "").strip().upper()
+    if key == "WHITE":
         return "White"
-    if key in (
-        "BLACK", "B", "AFRICAN AMERICAN", "AFRICAN-AMERICAN",
-        "BLACK OR AFRICAN AMERICAN",
-    ):
+    if key == "BLACK":
         return "Black"
     return "Other"
 

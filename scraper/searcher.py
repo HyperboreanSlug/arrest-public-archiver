@@ -113,6 +113,11 @@ def _canonical_race_key(recorded_race: str) -> str:
         return _RACE_ALIASES[r_spaced]
     if len(r_spaced) == 1 and r_spaced in _RACE_ALIASES:
         return _RACE_ALIASES[r_spaced]
+    # "U - Unknown", "U Unknown", "Unk Unknown", etc.
+    if "UNKNOWN" in r_spaced:
+        prefix = r_spaced.replace("UNKNOWN", " ").strip()
+        if prefix in ("", "U", "UNK", "N/A", "NA"):
+            return "UNKNOWN"
     if r_spaced in ("OTHER ASIAN", "ASIAN OTHER", "OTHER ASIAN PACIFIC ISLANDER"):
         return "OTHER ASIAN"
     if "OTHER" in r_spaced and "ASIAN" in r_spaced:

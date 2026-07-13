@@ -71,7 +71,7 @@ class RecentlyBookedTabMixin:
     def _rb_row_values(self, record: Dict[str, Any], eth=None) -> tuple:
         return (
             self._rb_name(record),
-            record.get("race") or "",
+            format_race_label(record.get("race") or ""),
             record.get("state") or "",
             record.get("county") or "",
             (record.get("charge_description") or "")[:40],

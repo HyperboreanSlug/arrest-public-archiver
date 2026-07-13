@@ -354,9 +354,13 @@ class RecordSidebar:
                 webbrowser.open(path.resolve().as_uri())
 
     def _fill_text(self, record: Dict[str, Any]) -> None:
+        from scraper.searcher import format_race_label
+
         lines = []
         for label, keys in _DETAIL_KEYS:
             value = _first(record, keys)
+            if label == "Race" and value != "—":
+                value = format_race_label(value)
             if value != "—":
                 lines.append(f"{label}: {value}")
         err = record.get("scrape_error")

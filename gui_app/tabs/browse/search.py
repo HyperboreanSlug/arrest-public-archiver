@@ -4,7 +4,7 @@ import customtkinter as ctk
 from gui_app.theme import C
 from gui_app.widgets import _enable_tree_column_sort, _stretch_columns, _tree_frame
 from scraper.charge_classifications import list_category_choices
-from scraper.searcher import ArrestSearcher
+from scraper.searcher import ArrestSearcher, format_race_label
 
 class SearchTabMixin:
     def _build_search(self, tab):
@@ -21,7 +21,7 @@ class SearchTabMixin:
         self.search_tree.delete(*self.search_tree.get_children())
         for x in r.records:
             name=x.get("full_name") or f"{x.get('first_name') or ''} {x.get('last_name') or ''}".strip()
-            self.search_tree.insert("","end",values=(x["id"],name,x.get("race") or "—",x.get("charge_description") or "",x.get("charge_category") or "",x.get("state") or "",x.get("arrest_date") or x.get("booking_date") or "",x.get("source_system") or ""))
+            self.search_tree.insert("","end",values=(x["id"],name,format_race_label(x.get("race") or ""),x.get("charge_description") or "",x.get("charge_category") or "",x.get("state") or "",x.get("arrest_date") or x.get("booking_date") or "",x.get("source_system") or ""))
     def _open_search_detail(self,_event):
         sel=self.search_tree.selection()
         if sel:
