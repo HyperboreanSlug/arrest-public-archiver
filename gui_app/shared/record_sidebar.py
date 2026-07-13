@@ -104,9 +104,6 @@ class RecordSidebar:
         self.frame = ctk.CTkFrame(parent, fg_color=C["panel"], width=380, corner_radius=10)
         self.frame.grid_propagate(False)
         self.frame.grid_columnconfigure(0, weight=1)
-        # Photo row grows; details keep a share of leftover space.
-        self.frame.grid_rowconfigure(1, weight=3)
-        self.frame.grid_rowconfigure(7, weight=2)
 
         ctk.CTkLabel(
             self.frame, text="Details", font=FONT_BOLD, text_color=C["text"]
@@ -143,8 +140,20 @@ class RecordSidebar:
         )
         self.open_photo_btn.grid(row=0, column=1, sticky="ew", padx=(4, 0))
 
+        self.export_btn = ctk.CTkButton(
+            self.frame,
+            text="Export card to Desktop",
+            command=self._export_card,
+            state="disabled",
+            height=30,
+            fg_color=C["accent_dim"],
+            hover_color=C["accent"],
+            text_color=C["text"],
+        )
+        self.export_btn.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 4))
+
         verdict_row = ctk.CTkFrame(self.frame, fg_color="transparent")
-        verdict_row.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 4))
+        verdict_row.grid(row=4, column=0, sticky="ew", padx=12, pady=(0, 4))
         verdict_row.grid_columnconfigure((0, 1), weight=1)
         self.correct_btn = ctk.CTkButton(
             verdict_row,
@@ -179,15 +188,15 @@ class RecordSidebar:
             height=40,
             anchor="center",
         )
-        self.race_banner.grid(row=4, column=0, sticky="ew", padx=12, pady=(2, 4))
+        self.race_banner.grid(row=5, column=0, sticky="ew", padx=12, pady=(2, 4))
 
         self.verdict_status = ctk.CTkLabel(
             self.frame, text="", font=FONT_SM, text_color=C["muted"], anchor="w"
         )
-        self.verdict_status.grid(row=5, column=0, sticky="ew", padx=12, pady=(0, 2))
+        self.verdict_status.grid(row=6, column=0, sticky="ew", padx=12, pady=(0, 2))
 
         actual_row = ctk.CTkFrame(self.frame, fg_color="transparent")
-        actual_row.grid(row=6, column=0, sticky="ew", padx=12, pady=(0, 4))
+        actual_row.grid(row=7, column=0, sticky="ew", padx=12, pady=(0, 4))
         actual_row.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(
             actual_row, text="Actual race", font=FONT_SM, text_color=C["muted"]
@@ -210,9 +219,13 @@ class RecordSidebar:
             activate_scrollbars=True,
             height=140,
         )
-        self.details.grid(row=7, column=0, sticky="nsew", padx=12, pady=(0, 10))
+        self.details.grid(row=8, column=0, sticky="nsew", padx=12, pady=(0, 10))
         self.details.insert("end", "Select a row to preview mugshot and booking fields.")
         self.details.configure(state="disabled")
+
+        # Photo grows; details keep leftover space (row index after insert).
+        self.frame.grid_rowconfigure(1, weight=3)
+        self.frame.grid_rowconfigure(8, weight=2)
 
         self._image_ref: Any = None
         self._load_token = 0
@@ -324,7 +337,7 @@ class RecordSidebar:
         if fw < 80 or fh < 80:
             return self.photo_size
         # Reserve space for header + buttons + banner + actual race + details.
-        side = min(fw - 20, max(180, fh - 320))
+        side = min(fw - 20, max(180, fh - 360))
         side = max(200, min(side, 480))
         return (side, side)
 
@@ -346,6 +359,7 @@ class RecordSidebar:
         self.photo.configure(image="", text=message)
         self.open_btn.configure(state="disabled")
         self.open_photo_btn.configure(state="disabled")
+        self.export_btn.configure(state="disabled")
         self.correct_btn.configure(state="disabled")
         self.incorrect_btn.configure(state="disabled")
         self.actual_race.configure(state="disabled")
@@ -373,6 +387,7 @@ class RecordSidebar:
         self.open_photo_btn.configure(
             state="normal" if photo_path and photo_path.is_file() else "disabled"
         )
+        self.export_btn.configure(state="normal")
         enabled = "normal" if self._on_verdict else "disabled"
         self.correct_btn.configure(state=enabled)
         self.incorrect_btn.configure(state=enabled)
@@ -417,6 +432,43 @@ class RecordSidebar:
                 os.startfile(str(path))  # type: ignore[attr-defined]
             except Exception:
                 webbrowser.open(path.resolve().as_uri())
+
+    def _export_card(self) -> None:
+        if not self._record:
+            return
+        self.export_btn.configure(state="disabled", text="Exporting…")
+        record = dict(self._record)
+
+        def work() -> None:
+            try:
+                from gui_app.shared.export_card import export_record_card_to_desktop
+
+                path = export_record_card_to_desktop(record)
+
+                def ok() -> None:
+                    self.export_btn.configure(
+                        state="normal", text="Export card to Desktop"
+                    )
+                    self.verdict_status.configure(
+                        text=f"Saved card → {path.name}",
+                        text_color=C["success"],
+                    )
+
+                self._schedule(ok)
+            except Exception as exc:
+
+                def fail() -> None:
+                    self.export_btn.configure(
+                        state="normal", text="Export card to Desktop"
+                    )
+                    self.verdict_status.configure(
+                        text=f"Export failed: {exc}",
+                        text_color=C["danger"],
+                    )
+
+                self._schedule(fail)
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _fill_text(self, record: Dict[str, Any]) -> None:
         from scraper.searcher import format_race_label
