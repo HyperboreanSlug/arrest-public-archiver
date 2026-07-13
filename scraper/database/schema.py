@@ -16,13 +16,19 @@ class SchemaMixin:
     """Connection + schema migrations."""
 
     def __init__(self, db_path: Optional[str] = None):
+        # check_same_thread=False: multi-thread scrapes import under an
+        # application lock (GUI) or from a single importer thread (CLI).
         if db_path == ":memory:":
             self.db_path = Path(":memory:")
-            self._conn = sqlite3.connect(":memory:")
+            self._conn = sqlite3.connect(
+                ":memory:", check_same_thread=False
+            )
         else:
             self.db_path = Path(db_path) if db_path else Path(DEFAULT_DB_PATH)
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
-            self._conn = sqlite3.connect(str(self.db_path))
+            self._conn = sqlite3.connect(
+                str(self.db_path), check_same_thread=False
+            )
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")

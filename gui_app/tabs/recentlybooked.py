@@ -241,6 +241,38 @@ class RecentlyBookedTabMixin:
     def _rb_has_race(record: Dict[str, Any]) -> bool:
         return bool(str(record.get("race") or "").strip())
 
+    @staticmethod
+    def _rb_has_photo(record: Dict[str, Any]) -> bool:
+        if str(record.get("photo_path") or "").strip():
+            return True
+        return bool(str(record.get("photo_url") or "").strip())
+
+    @classmethod
+    def _rb_filter_rows(
+        cls,
+        rows: List[Dict[str, Any]],
+        *,
+        hide_no_race: bool = False,
+        hide_no_photo: bool = False,
+    ) -> List[Dict[str, Any]]:
+        out = rows
+        if hide_no_race:
+            out = [r for r in out if cls._rb_has_race(r)]
+        if hide_no_photo:
+            out = [r for r in out if cls._rb_has_photo(r)]
+        return out
+
+    @staticmethod
+    def _rb_filter_mode_text(*, hide_no_race: bool, hide_no_photo: bool) -> str:
+        parts = []
+        if hide_no_race:
+            parts.append("no-race")
+        if hide_no_photo:
+            parts.append("no-photo")
+        if not parts:
+            return "showing all"
+        return "hiding " + " + ".join(parts)
+
     def _build_rb_live(self, tab):
         bar = ctk.CTkFrame(tab, fg_color=C["panel"])
         bar.pack(fill="x", padx=8, pady=8)
@@ -269,6 +301,14 @@ class RecentlyBookedTabMixin:
             command=self._rb_live_toggle_no_race_filter,
         )
         self.rb_live_filter_btn.pack(side="left", padx=5)
+        self.rb_live_hide_no_photo_var = ctk.BooleanVar(value=True)
+        self.rb_live_hide_no_photo = ctk.CTkCheckBox(
+            bar,
+            text="Hide no photo",
+            variable=self.rb_live_hide_no_photo_var,
+            command=self._rb_live_on_photo_filter_toggle,
+        )
+        self.rb_live_hide_no_photo.pack(side="left", padx=5)
         self.rb_live_status = ctk.CTkLabel(
             bar,
             text="Live feed auto-updates every few seconds.",
@@ -296,6 +336,26 @@ class RecentlyBookedTabMixin:
         else:
             self.log("Live feed: auto-update off.")
 
+    def _rb_live_filter_flags(self) -> tuple[bool, bool]:
+        hide_photo = bool(
+            getattr(self, "rb_live_hide_no_photo_var", None)
+            and self.rb_live_hide_no_photo_var.get()
+        )
+        return bool(self.rb_live_hide_no_race), hide_photo
+
+    def _rb_live_update_filter_status(self, *, log: bool = True) -> None:
+        shown = len(self._rb_records)
+        total = len(self._rb_live_all)
+        hide_race, hide_photo = self._rb_live_filter_flags()
+        mode = self._rb_filter_mode_text(
+            hide_no_race=hide_race, hide_no_photo=hide_photo
+        )
+        self.rb_live_status.configure(
+            text=f"Live feed: {shown}/{total} shown ({mode})."
+        )
+        if log:
+            self.log(f"Live feed filter: {mode} ({shown}/{total}).")
+
     def _rb_live_toggle_no_race_filter(self):
         self.rb_live_hide_no_race = not self.rb_live_hide_no_race
         if self.rb_live_hide_no_race:
@@ -303,20 +363,20 @@ class RecentlyBookedTabMixin:
         else:
             self.rb_live_filter_btn.configure(text="Hide no race")
         self._rb_rebuild_live_tree()
-        shown = len(self._rb_records)
-        total = len(self._rb_live_all)
-        mode = "hiding no-race" if self.rb_live_hide_no_race else "showing all"
-        self.rb_live_status.configure(
-            text=f"Live feed: {shown}/{total} shown ({mode})."
-        )
-        self.log(f"Live feed filter: {mode} ({shown}/{total}).")
+        self._rb_live_update_filter_status()
+
+    def _rb_live_on_photo_filter_toggle(self):
+        self._rb_rebuild_live_tree()
+        self._rb_live_update_filter_status()
 
     def _rb_rebuild_live_tree(self, *, select_url: Optional[str] = None) -> None:
         eth = getattr(self, "_rb_live_eth", None)
-        if self.rb_live_hide_no_race:
-            shown = [r for r in self._rb_live_all if self._rb_has_race(r)]
-        else:
-            shown = list(self._rb_live_all)
+        hide_race, hide_photo = self._rb_live_filter_flags()
+        shown = self._rb_filter_rows(
+            self._rb_live_all,
+            hide_no_race=hide_race,
+            hide_no_photo=hide_photo,
+        )
         self._rb_records = shown
         self.rb_tree.delete(*self.rb_tree.get_children())
         select_item = None
@@ -445,6 +505,10 @@ class RecentlyBookedTabMixin:
                             )
                             shown = len(self._rb_records)
                             total = len(self._rb_live_all)
+                            hide_race, hide_photo = self._rb_live_filter_flags()
+                            mode = self._rb_filter_mode_text(
+                                hide_no_race=hide_race, hide_no_photo=hide_photo
+                            )
                             msg = (
                                 f"Live feed: {shown}/{total} shown"
                                 + (
@@ -452,12 +516,7 @@ class RecentlyBookedTabMixin:
                                     if incremental
                                     else ""
                                 )
-                                + (
-                                    " · hiding no-race"
-                                    if self.rb_live_hide_no_race
-                                    else ""
-                                )
-                                + "."
+                                + f" · {mode}."
                             )
                             self.rb_live_status.configure(text=msg)
                             self.log(msg)
@@ -736,6 +795,14 @@ class RecentlyBookedTabMixin:
             command=self._rb_full_toggle_no_race_filter,
         )
         self.rb_full_filter_btn.pack(side="left", padx=5)
+        self.rb_full_hide_no_photo_var = ctk.BooleanVar(value=True)
+        self.rb_full_hide_no_photo = ctk.CTkCheckBox(
+            bar,
+            text="Hide no photo",
+            variable=self.rb_full_hide_no_photo_var,
+            command=self._rb_full_on_photo_filter_toggle,
+        )
+        self.rb_full_hide_no_photo.pack(side="left", padx=5)
         self.rb_full_status = ctk.CTkLabel(
             bar,
             text="Multi-thread counties; set Threads + Delay per request.",
@@ -751,6 +818,26 @@ class RecentlyBookedTabMixin:
             sidebar_attr="rb_full_sidebar",
         )
 
+    def _rb_full_filter_flags(self) -> tuple[bool, bool]:
+        hide_photo = bool(
+            getattr(self, "rb_full_hide_no_photo_var", None)
+            and self.rb_full_hide_no_photo_var.get()
+        )
+        return bool(self.rb_full_hide_no_race), hide_photo
+
+    def _rb_full_update_filter_status(self, *, log: bool = True) -> None:
+        shown = len(self._rb_full_records)
+        total = len(getattr(self, "_rb_full_all", []) or [])
+        hide_race, hide_photo = self._rb_full_filter_flags()
+        mode = self._rb_filter_mode_text(
+            hide_no_race=hide_race, hide_no_photo=hide_photo
+        )
+        self.rb_full_status.configure(
+            text=f"Full scrape: {shown}/{total} shown ({mode})."
+        )
+        if log:
+            self.log(f"Full scrape filter: {mode} ({shown}/{total}).")
+
     def _rb_full_toggle_no_race_filter(self):
         self.rb_full_hide_no_race = not self.rb_full_hide_no_race
         if self.rb_full_hide_no_race:
@@ -758,21 +845,21 @@ class RecentlyBookedTabMixin:
         else:
             self.rb_full_filter_btn.configure(text="Hide no race")
         self._rb_rebuild_full_tree()
-        shown = len(self._rb_full_records)
-        total = len(getattr(self, "_rb_full_all", []) or [])
-        mode = "hiding no-race" if self.rb_full_hide_no_race else "showing all"
-        self.rb_full_status.configure(
-            text=f"Full scrape: {shown}/{total} shown ({mode})."
-        )
-        self.log(f"Full scrape filter: {mode} ({shown}/{total}).")
+        self._rb_full_update_filter_status()
+
+    def _rb_full_on_photo_filter_toggle(self):
+        self._rb_rebuild_full_tree()
+        self._rb_full_update_filter_status()
 
     def _rb_rebuild_full_tree(self, *, select_url: Optional[str] = None) -> None:
         eth = getattr(self, "_rb_full_eth", None)
         all_rows = getattr(self, "_rb_full_all", []) or []
-        if self.rb_full_hide_no_race:
-            shown = [r for r in all_rows if self._rb_has_race(r)]
-        else:
-            shown = list(all_rows)
+        hide_race, hide_photo = self._rb_full_filter_flags()
+        shown = self._rb_filter_rows(
+            all_rows,
+            hide_no_race=hide_race,
+            hide_no_photo=hide_photo,
+        )
         self._rb_full_records = shown
         self.rb_full_tree.delete(*self.rb_full_tree.get_children())
         select_item = None
@@ -857,16 +944,40 @@ class RecentlyBookedTabMixin:
                                 url = str(row.get("source_url") or "")
                                 if url:
                                     known.add(url)
+                                # Prefer scraper-known skip over DB skip: URL was
+                                # reserved before fetch, so a skip here means it
+                                # landed in DB from another path — still bind id.
+                                if not row.get("id") and url:
+                                    found = db._conn.execute(
+                                        "SELECT id FROM arrests "
+                                        "WHERE source_url = ? "
+                                        "ORDER BY id DESC LIMIT 1",
+                                        (url,),
+                                    ).fetchone()
+                                    if found:
+                                        row["id"] = int(found[0])
                         except Exception as exc:
+                            err = f"import: {exc}"
                             row["scrape_error"] = (
-                                row.get("scrape_error") or f"import: {exc}"
+                                f"{row.get('scrape_error')}; {err}"
+                                if row.get("scrape_error")
+                                else err
+                            )
+                            self.after(
+                                0,
+                                lambda e=err, u=str(row.get("source_url") or ""): self.log(
+                                    f"RecentlyBooked store failed ({u}): {e}"
+                                ),
                             )
 
                         def ui() -> None:
                             self._rb_full_all.append(row)
-                            visible = (not self.rb_full_hide_no_race) or self._rb_has_race(
-                                row
-                            )
+                            hide_race, hide_photo = self._rb_full_filter_flags()
+                            visible = True
+                            if hide_race and not self._rb_has_race(row):
+                                visible = False
+                            if hide_photo and not self._rb_has_photo(row):
+                                visible = False
                             if visible:
                                 self._rb_append_row(
                                     self.rb_full_tree,
@@ -881,16 +992,14 @@ class RecentlyBookedTabMixin:
                                 )
                             shown_n = len(self._rb_full_records)
                             total_n = len(self._rb_full_all)
-                            filt = (
-                                " · hiding no-race"
-                                if self.rb_full_hide_no_race
-                                else ""
+                            mode = self._rb_filter_mode_text(
+                                hide_no_race=hide_race, hide_no_photo=hide_photo
                             )
                             self.rb_full_status.configure(
                                 text=(
                                     f"{shown_n}/{total_n} shown · "
                                     f"+{imported} imported · {skipped} skipped · "
-                                    f"{workers}t{filt}"
+                                    f"{workers}t · {mode}"
                                 )
                             )
                             if n == 1 or n % 10 == 0:
