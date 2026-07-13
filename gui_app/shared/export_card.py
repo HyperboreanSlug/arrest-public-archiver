@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Tuple
 
@@ -194,6 +195,70 @@ def _wrap_text(
     return lines
 
 
+def _is_parchment(r: int, g: int, b: int) -> bool:
+    """True for the seal's tan/beige backdrop (not navy or gold artwork)."""
+    mx, mn = max(r, g, b), min(r, g, b)
+    avg = (r + g + b) / 3.0
+    # Muted mid-tan: channels close together, warm, mid luminance.
+    if mx - mn <= 70 and 120 <= avg <= 230 and r >= b - 5 and g >= b - 10:
+        return True
+    return False
+
+
+def _is_rope_gold(r: int, g: int, b: int) -> bool:
+    """True for the outer twisted gold/bronze rope border."""
+    if b > 110:
+        return False
+    if r < 70 and g < 60:
+        return False
+    # Gold/bronze: red+green dominate blue, warm bias.
+    if r >= g >= b and (r - b) >= 35 and (g - b) >= 15:
+        return True
+    if r >= 90 and g >= 60 and b <= 100 and (r + g) > 2.2 * (b + 1):
+        return True
+    return False
+
+
+@lru_cache(maxsize=4)
+def _prepared_seal(path_str: str, mtime_ns: int) -> Image.Image:
+    """Load seal with parchment + outer rope made transparent."""
+    import math
+
+    im = Image.open(path_str).convert("RGBA")
+    w, h = im.size
+    cx, cy = (w - 1) / 2.0, (h - 1) / 2.0
+    max_r = min(cx, cy)
+    # Drop the outer rope ring + parchment; keep navy disc + artwork.
+    rope_start = max_r * 0.875
+    px = im.load()
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a == 0:
+                continue
+            dist = math.hypot(x - cx, y - cy)
+            if dist > rope_start or _is_parchment(r, g, b):
+                px[x, y] = (r, g, b, 0)
+                continue
+            # Any leftover rope fragments just inside the cut.
+            if dist > max_r * 0.82 and _is_rope_gold(r, g, b):
+                px[x, y] = (r, g, b, 0)
+    return im
+
+
+def _load_seal() -> Optional[Image.Image]:
+    if not _SEAL_PATH.is_file():
+        return None
+    try:
+        st = _SEAL_PATH.stat()
+        return _prepared_seal(str(_SEAL_PATH.resolve()), int(getattr(st, "st_mtime_ns", 0))).copy()
+    except Exception:
+        try:
+            return Image.open(_SEAL_PATH).convert("RGBA")
+        except Exception:
+            return None
+
+
 def _with_opacity(img: Image.Image, opacity: float) -> Image.Image:
     """Multiply existing alpha by *opacity* (0..1)."""
     rgba = img.convert("RGBA")
@@ -209,7 +274,7 @@ def _draw_seal_watermark(
     *,
     photo_box: Tuple[int, int, int, int],
     text: str = _WATERMARK,
-    opacity: float = 0.10,
+    opacity: float = 0.20,
 ) -> None:
     """Center the Department seal on the mugshot with handle text beneath it."""
     overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
@@ -217,16 +282,16 @@ def _draw_seal_watermark(
     photo_w = max(1, right - left)
     photo_h = max(1, bottom - top)
 
-    if _SEAL_PATH.is_file():
-        seal = Image.open(_SEAL_PATH).convert("RGBA")
+    seal = _load_seal()
+    if seal is not None:
         # Cover most of the mugshot while leaving room for text under the seal.
-        target = int(min(photo_w, photo_h) * 0.78)
+        target = int(min(photo_w, photo_h) * 0.88)
         seal = seal.resize((target, target), Image.Resampling.LANCZOS)
         seal = _with_opacity(seal, opacity)
         seal_x = left + (photo_w - target) // 2
-        seal_y = top + max(8, int(photo_h * 0.08))
+        seal_y = top + max(8, int(photo_h * 0.06))
         overlay.paste(seal, (seal_x, seal_y), seal)
-        text_top = seal_y + target + 12
+        text_top = seal_y + target + 8
     else:
         text_top = top + photo_h // 2
 
@@ -253,8 +318,8 @@ def render_export_card(record: Mapping[str, Any]) -> Image.Image:
     mug = _load_mugshot(record, photo_box).convert("RGBA")
     canvas.paste(mug, (margin, margin), mug if mug.mode == "RGBA" else None)
 
-    # Seal + @handle watermark on the mugshot at 10% opacity
-    _draw_seal_watermark(canvas, photo_box=photo_rect, opacity=0.10)
+    # Seal + @handle watermark on the mugshot at 20% opacity
+    _draw_seal_watermark(canvas, photo_box=photo_rect, opacity=0.20)
 
     # Accent bar under photo
     bar_y = margin + _PHOTO_H + 18
