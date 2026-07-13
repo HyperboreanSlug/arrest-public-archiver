@@ -16,7 +16,8 @@ class SettingsTabMixin:
         self.set_skip=ctk.CTkCheckBox(form,text="Skip existing source URLs");self._check(self.set_skip,"scrape_skip_existing");self.set_skip.pack(anchor="w",padx=8,pady=8)
         self.set_rb_photos=ctk.CTkCheckBox(form,text="RecentlyBooked: download photos");self._check(self.set_rb_photos,"rb_with_photos");self.set_rb_photos.pack(anchor="w",padx=8,pady=8)
         self.set_rb_html=ctk.CTkCheckBox(form,text="RecentlyBooked: archive HTML");self._check(self.set_rb_html,"rb_with_html");self.set_rb_html.pack(anchor="w",padx=8,pady=8)
-        self.set_rb_delay=ctk.CTkEntry(form);self.set_rb_delay.insert(0,str(self.app_settings["rb_delay"]));self._setting(form,"RecentlyBooked delay",self.set_rb_delay)
+        self.set_rb_delay=ctk.CTkEntry(form);self.set_rb_delay.insert(0,str(self.app_settings["rb_delay"]));self._setting(form,"RecentlyBooked delay (seconds)",self.set_rb_delay)
+        self.set_rb_threads=ctk.CTkEntry(form);self.set_rb_threads.insert(0,str(self.app_settings.get("rb_threads",4)));self._setting(form,"RecentlyBooked scrape threads",self.set_rb_threads)
         ctk.CTkButton(form,text="Save settings",command=self._save_settings).pack(anchor="w",padx=8,pady=8);ctk.CTkButton(form,text="Back up now",command=self._backup_now).pack(anchor="w",padx=8,pady=4)
         self.settings_status=ctk.CTkLabel(form,text="",text_color=C["muted"]);self.settings_status.pack(anchor="w",padx=8,pady=8)
     def _setting(self,parent,label,widget):ctk.CTkLabel(parent,text=label,text_color=C["muted"]).pack(anchor="w",padx=8,pady=(8,1));widget.pack(anchor="w",padx=8)
@@ -27,6 +28,8 @@ class SettingsTabMixin:
     def _save_settings(self):
         self.app_settings.update(db_path=self.set_db.get().strip(),backup_on_close=bool(self.set_backup.get()),scrape_auto_import=bool(self.set_auto.get()),scrape_skip_existing=bool(self.set_skip.get()),rb_with_photos=bool(self.set_rb_photos.get()),rb_with_html=bool(self.set_rb_html.get()))
         try:self.app_settings["rb_delay"]=float(self.set_rb_delay.get())
+        except ValueError:pass
+        try:self.app_settings["rb_threads"]=int(self.set_rb_threads.get())
         except ValueError:pass
         save_settings(self.app_settings)
         if self.db_path!=self.app_settings["db_path"]:self.reopen_database(self.app_settings["db_path"])

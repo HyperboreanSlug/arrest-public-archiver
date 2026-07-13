@@ -21,6 +21,7 @@ DEFAULTS: Dict[str, Any] = {
     "rb_with_photos": True,
     "rb_with_html": True,
     "rb_delay": 1.0,
+    "rb_threads": 4,
     # DeepFace (local mugshot race model)
     "deepface_auto_setup": True,
     "deepface_auto_warm": True,
@@ -94,7 +95,11 @@ def normalize_settings(s: Dict[str, Any]) -> Dict[str, Any]:
     except (TypeError, ValueError):
         out["scrape_default_row_limit"] = 5000
     try:
-        out["rb_delay"] = max(0.2, float(out.get("rb_delay", 1.0)))
+        out["rb_delay"] = max(0.0, float(out.get("rb_delay", 1.0)))
     except (TypeError, ValueError):
         out["rb_delay"] = 1.0
+    try:
+        out["rb_threads"] = max(1, min(int(out.get("rb_threads", 4)), 32))
+    except (TypeError, ValueError):
+        out["rb_threads"] = 4
     return out

@@ -268,11 +268,15 @@ def cmd_recentlybooked(args: argparse.Namespace) -> None:
 
         # scrape
         print("RecentlyBooked scrape…")
+        workers = max(1, int(getattr(args, "threads", 1) or 1))
+        if workers > 1:
+            print(f"  Using {workers} threads (delay {args.delay}s)")
         if args.all:
             rows = scraper.scrape_all(
                 limit_counties=int(args.limit_counties or 0),
                 with_photos=with_photos,
                 with_html=with_html,
+                workers=workers,
             )
         elif args.state and args.county:
             rows = scraper.scrape_county(
@@ -281,12 +285,14 @@ def cmd_recentlybooked(args: argparse.Namespace) -> None:
                 max_pages=int(args.max_pages or 0),
                 with_photos=with_photos,
                 with_html=with_html,
+                workers=workers,
             )
         elif args.state:
             rows = scraper.scrape_state(
                 args.state,
                 with_photos=with_photos,
                 with_html=with_html,
+                workers=workers,
             )
         else:
             print("Specify --all, --state ST, or --state ST --county slug")
@@ -533,6 +539,7 @@ def main() -> None:
     prb_sc.add_argument("--no-photos", action="store_true")
     prb_sc.add_argument("--no-html", action="store_true")
     prb_sc.add_argument("--delay", type=float, default=1.0)
+    prb_sc.add_argument("--threads", type=int, default=1, help="Parallel workers (1–32)")
     prb_sc.add_argument("--database", "-d", default="data/arrests.db")
 
     prb_mc = prb_sub.add_parser("misclassify", help="Surname misclass for RB rows")

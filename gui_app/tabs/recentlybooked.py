@@ -709,6 +709,18 @@ class RecentlyBookedTabMixin:
         self.rb_county.pack(side="left", padx=5)
         self.rb_all = ctk.CTkCheckBox(bar, text="All states")
         self.rb_all.pack(side="left", padx=5)
+        ctk.CTkLabel(bar, text="Threads", font=FONT_SM, text_color=C["muted"]).pack(
+            side="left", padx=(10, 2)
+        )
+        self.rb_threads = ctk.CTkEntry(bar, width=50)
+        self.rb_threads.insert(0, str(self.app_settings.get("rb_threads", 4)))
+        self.rb_threads.pack(side="left", padx=(0, 6))
+        ctk.CTkLabel(bar, text="Delay", font=FONT_SM, text_color=C["muted"]).pack(
+            side="left", padx=(4, 2)
+        )
+        self.rb_full_delay = ctk.CTkEntry(bar, width=55)
+        self.rb_full_delay.insert(0, str(self.app_settings.get("rb_delay", 1.0)))
+        self.rb_full_delay.pack(side="left", padx=(0, 6))
         self.rb_cancel = False
         ctk.CTkButton(bar, text="Start", command=self._rb_full_start).pack(
             side="left", padx=5
@@ -718,7 +730,7 @@ class RecentlyBookedTabMixin:
         ).pack(side="left", padx=5)
         self.rb_full_status = ctk.CTkLabel(
             bar,
-            text="Records stream in live; select a row for photo/details.",
+            text="Multi-thread counties; set Threads + Delay per request.",
             font=FONT_SM,
             text_color=C["muted"],
         )
@@ -740,20 +752,41 @@ class RecentlyBookedTabMixin:
             return
 
         db_path = self.db_path
-        delay = float(self.app_settings.get("rb_delay") or 1.0)
+        try:
+            delay = max(0.0, float(self.rb_full_delay.get().strip() or 1.0))
+        except ValueError:
+            delay = float(self.app_settings.get("rb_delay") or 1.0)
+        try:
+            workers = max(1, min(int(self.rb_threads.get().strip() or 4), 32))
+        except ValueError:
+            workers = int(self.app_settings.get("rb_threads") or 4)
+        self.app_settings["rb_delay"] = delay
+        self.app_settings["rb_threads"] = workers
+        try:
+            from scraper.app_settings import save_settings
+
+            save_settings(self.app_settings)
+        except Exception:
+            pass
         with_photos = bool(self.app_settings.get("rb_with_photos", True))
         with_html = bool(self.app_settings.get("rb_with_html", True))
 
         self._rb_full_records = []
         self.rb_full_tree.delete(*self.rb_full_tree.get_children())
         self.rb_full_sidebar.clear("Scraping…")
-        self.rb_full_status.configure(text="Starting…")
-        self.log("RecentlyBooked full scrape started…")
+        self.rb_full_status.configure(
+            text=f"Starting ({workers} threads, delay {delay}s)…"
+        )
+        self.log(
+            f"RecentlyBooked full scrape started "
+            f"({workers} threads, delay {delay}s)…"
+        )
 
         def work():
             imported = 0
             skipped = 0
             shown = [0]
+            import_lock = threading.Lock()
             try:
                 eth = ArrestSearcher(db_path).ethnic_db
                 db = Database(db_path)
@@ -764,14 +797,15 @@ class RecentlyBookedTabMixin:
                         nonlocal imported, skipped
                         row = dict(rec)
                         try:
-                            result = db.import_records(
-                                [row], skip_existing_urls=True
-                            )
-                            imported += int(result.get("imported") or 0)
-                            skipped += int(result.get("skipped") or 0)
-                            url = str(row.get("source_url") or "")
-                            if url:
-                                known.add(url)
+                            with import_lock:
+                                result = db.import_records(
+                                    [row], skip_existing_urls=True
+                                )
+                                imported += int(result.get("imported") or 0)
+                                skipped += int(result.get("skipped") or 0)
+                                url = str(row.get("source_url") or "")
+                                if url:
+                                    known.add(url)
                         except Exception as exc:
                             row["scrape_error"] = (
                                 row.get("scrape_error") or f"import: {exc}"
@@ -788,13 +822,13 @@ class RecentlyBookedTabMixin:
                                 status_label=self.rb_full_status,
                                 status_fmt=(
                                     f"{{n}} shown · +{imported} imported · "
-                                    f"{skipped} skipped"
+                                    f"{skipped} skipped · {workers}t"
                                 ),
                             )
                             if n == 1 or n % 10 == 0:
                                 self.log(
                                     f"RecentlyBooked: {n} records "
-                                    f"(+{imported} imported)"
+                                    f"(+{imported} imported, {workers} threads)"
                                 )
 
                         self.after(0, ui)
@@ -807,6 +841,7 @@ class RecentlyBookedTabMixin:
                             skip_existing_urls=known,
                             cancel_check=lambda: self.rb_cancel,
                             record_cb=on_record,
+                            workers=workers,
                         )
                         if scrape_all:
                             s.scrape_all(**kw)
@@ -820,7 +855,8 @@ class RecentlyBookedTabMixin:
                 msg = (
                     f"RecentlyBooked full scrape done: "
                     f"{shown[0]} shown, "
-                    f"+{imported} imported, {skipped} skipped."
+                    f"+{imported} imported, {skipped} skipped "
+                    f"({workers} threads)."
                 )
                 self.log(msg)
                 self.after(0, lambda: self.rb_full_status.configure(text=msg))
