@@ -26,24 +26,39 @@ def _links(html: str, base_url: str = BASE_URL) -> List[str]:
     ]
 
 
+def _normalize_xml_text(xml_text: str) -> str:
+    """Strip real or mis-decoded UTF-8 BOMs that break ElementTree."""
+    text = xml_text.lstrip("\ufeff")
+    # requests sometimes decodes EF BB BF as latin-1 → "ï»¿"
+    if text.startswith("ï»¿"):
+        text = text[3:]
+    return text
+
+
 def _sitemap_locs(xml_text: str) -> List[str]:
     """Collect ``<loc>`` URLs from a sitemap XML document."""
+    text = _normalize_xml_text(xml_text)
     # Strip default namespace so findall("loc") works without Clark notation.
-    cleaned = re.sub(r'\sxmlns="[^"]+"', "", xml_text, count=1)
+    cleaned = re.sub(r'\sxmlns="[^"]+"', "", text, count=1)
+    locs: List[str] = []
     try:
         root = ET.fromstring(cleaned)
+        for el in root.iter():
+            tag = el.tag.rsplit("}", 1)[-1].lower()
+            if tag == "loc" and el.text and el.text.strip():
+                locs.append(el.text.strip())
     except ET.ParseError:
-        # Fallback: treat as HTML/XML soup with an XML-aware parser if available.
         try:
-            soup = BeautifulSoup(xml_text, "xml")
+            soup = BeautifulSoup(text, "xml")
         except Exception:
-            soup = BeautifulSoup(xml_text, "html.parser")
-        return [loc.get_text(strip=True) for loc in soup.find_all("loc") if loc.get_text(strip=True)]
-    locs: List[str] = []
-    for el in root.iter():
-        tag = el.tag.rsplit("}", 1)[-1].lower()
-        if tag == "loc" and el.text and el.text.strip():
-            locs.append(el.text.strip())
+            soup = BeautifulSoup(text, "html.parser")
+        locs = [
+            loc.get_text(strip=True)
+            for loc in soup.find_all("loc")
+            if loc.get_text(strip=True)
+        ]
+    if not locs:
+        locs = re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", text, flags=re.IGNORECASE)
     return locs
 
 

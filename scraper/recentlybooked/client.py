@@ -53,6 +53,10 @@ class RecentlyBookedClient:
                 response = self.session.get(url, timeout=REQUEST_TIMEOUT)
                 self._last_request_at = time.monotonic()
                 response.raise_for_status()
+                # Prefer UTF-8 when the body starts with a UTF-8 BOM or XML decl.
+                raw = response.content[:4]
+                if raw.startswith(b"\xef\xbb\xbf") or raw.lstrip().startswith(b"<?xml"):
+                    response.encoding = "utf-8"
                 return response
             except requests.RequestException as exc:
                 last_error = exc

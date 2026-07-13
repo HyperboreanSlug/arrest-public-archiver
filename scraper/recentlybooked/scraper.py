@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from ..charge_classifications import classify_record
 from .archive_html import archive_html
@@ -18,6 +18,7 @@ from .photos import download_photo
 
 CancelCheck = Callable[[], bool]
 ProgressCallback = Callable[[int, Optional[int]], None]
+RecordCallback = Callable[[Dict[str, Any], int], None]
 
 
 class RecentlyBookedScraper:
@@ -62,6 +63,15 @@ class RecentlyBookedScraper:
         if progress_cb:
             progress_cb(count, None)
 
+    @staticmethod
+    def _emit(
+        record_cb: Optional[RecordCallback],
+        record: Dict[str, Any],
+        count: int,
+    ) -> None:
+        if record_cb:
+            record_cb(record, count)
+
     def _process_record(
         self,
         record: Dict[str, Any],
@@ -70,17 +80,23 @@ class RecentlyBookedScraper:
         with_photos: bool,
         with_html: bool,
     ) -> Dict[str, Any]:
-        if import_details or with_html:
-            detail_html = self.client.get(str(record["source_url"]))
-            if import_details:
-                record.update(parse_detail(detail_html, str(record["source_url"])))
-            if with_html:
-                archive_html(detail_html, record)
-        if with_photos:
-            photo_path = download_photo(record, self.client)
-            if photo_path:
-                record["photo_path"] = str(photo_path)
-        classify_record(record)
+        """Enrich one listing card. Network/archive failures are recorded, not raised."""
+        try:
+            if import_details or with_html:
+                detail_html = self.client.get(str(record["source_url"]))
+                if import_details:
+                    record.update(parse_detail(detail_html, str(record["source_url"])))
+                if with_html:
+                    html_path = archive_html(detail_html, record)
+                    if html_path:
+                        record["html_path"] = str(html_path)
+            if with_photos:
+                photo_path = download_photo(record, self.client)
+                if photo_path:
+                    record["photo_path"] = str(photo_path)
+            classify_record(record)
+        except Exception as exc:
+            record["scrape_error"] = f"{type(exc).__name__}: {exc}"
         return record
 
     def scrape_live(
@@ -88,6 +104,8 @@ class RecentlyBookedScraper:
         import_details: bool = True,
         with_photos: bool = True,
         with_html: bool = True,
+        progress_cb: Optional[ProgressCallback] = None,
+        record_cb: Optional[RecordCallback] = None,
     ) -> List[Dict[str, Any]]:
         """Scrape current homepage cards and optionally archive their detail data."""
         from .live_feed import fetch_live_feed
@@ -95,14 +113,15 @@ class RecentlyBookedScraper:
         records = fetch_live_feed(self.client, import_details=False)
         output: List[Dict[str, Any]] = []
         for record in records:
-            output.append(
-                self._process_record(
-                    record,
-                    import_details=import_details,
-                    with_photos=with_photos,
-                    with_html=with_html,
-                )
+            done = self._process_record(
+                record,
+                import_details=import_details,
+                with_photos=with_photos,
+                with_html=with_html,
             )
+            output.append(done)
+            self._emit(record_cb, done, len(output))
+            self._report(progress_cb, len(output))
         return output
 
     def scrape_county(
@@ -115,6 +134,7 @@ class RecentlyBookedScraper:
         with_html: bool = True,
         cancel_check: Optional[CancelCheck] = None,
         progress_cb: Optional[ProgressCallback] = None,
+        record_cb: Optional[RecordCallback] = None,
     ) -> List[Dict[str, Any]]:
         """Scrape a county; zero ``max_pages`` continues until a page has no cards."""
         state, county = state.strip().lower(), county.strip().lower()
@@ -137,14 +157,14 @@ class RecentlyBookedScraper:
                 if source_url in known_urls:
                     continue
                 known_urls.add(source_url)
-                records.append(
-                    self._process_record(
-                        card,
-                        import_details=True,
-                        with_photos=with_photos,
-                        with_html=with_html,
-                    )
+                done = self._process_record(
+                    card,
+                    import_details=True,
+                    with_photos=with_photos,
+                    with_html=with_html,
                 )
+                records.append(done)
+                self._emit(record_cb, done, len(records))
                 self._report(progress_cb, len(records))
             page += 1
         return records
@@ -158,24 +178,32 @@ class RecentlyBookedScraper:
         with_html: bool = True,
         cancel_check: Optional[CancelCheck] = None,
         progress_cb: Optional[ProgressCallback] = None,
+        record_cb: Optional[RecordCallback] = None,
     ) -> List[Dict[str, Any]]:
         """Discover and scrape every county listed for a state."""
         records: List[Dict[str, Any]] = []
         known_urls = skip_existing_urls if skip_existing_urls is not None else set()
+        total = 0
+
+        def _forward(rec: Dict[str, Any], _county_n: int) -> None:
+            nonlocal total
+            total += 1
+            records.append(rec)
+            self._emit(record_cb, rec, total)
+            self._report(progress_cb, total)
+
         for county in discover_counties_for_state(self.client, state):
             if self._cancelled(cancel_check):
                 break
-            records.extend(
-                self.scrape_county(
-                    state,
-                    county,
-                    max_pages=max_pages,
-                    skip_existing_urls=known_urls,
-                    with_photos=with_photos,
-                    with_html=with_html,
-                    cancel_check=cancel_check,
-                    progress_cb=progress_cb,
-                )
+            self.scrape_county(
+                state,
+                county,
+                max_pages=max_pages,
+                skip_existing_urls=known_urls,
+                with_photos=with_photos,
+                with_html=with_html,
+                cancel_check=cancel_check,
+                record_cb=_forward,
             )
         return records
 
@@ -188,32 +216,42 @@ class RecentlyBookedScraper:
         with_html: bool = True,
         cancel_check: Optional[CancelCheck] = None,
         progress_cb: Optional[ProgressCallback] = None,
+        record_cb: Optional[RecordCallback] = None,
     ) -> List[Dict[str, Any]]:
         """Discover all counties and scrape them, respecting an optional county cap."""
         known_urls = skip_existing_urls if skip_existing_urls is not None else set()
+        counties: List[tuple[str, str]] = []
         try:
-            counties: Iterable[tuple[str, str]] = discover_counties_from_sitemap(self.client)
+            counties = list(discover_counties_from_sitemap(self.client))
         except Exception:
             counties = []
+        if not counties:
             for state in discover_states_from_homepage(self.client):
                 counties.extend(
                     (state, county)
                     for county in discover_counties_for_state(self.client, state)
                 )
         records: List[Dict[str, Any]] = []
+        total = 0
+
+        def _forward(rec: Dict[str, Any], _county_n: int) -> None:
+            nonlocal total
+            total += 1
+            records.append(rec)
+            self._emit(record_cb, rec, total)
+            self._report(progress_cb, total)
+
         for index, (state, county) in enumerate(counties, start=1):
             if (limit_counties and index > limit_counties) or self._cancelled(cancel_check):
                 break
-            records.extend(
-                self.scrape_county(
-                    state,
-                    county,
-                    max_pages=max_pages,
-                    skip_existing_urls=known_urls,
-                    with_photos=with_photos,
-                    with_html=with_html,
-                    cancel_check=cancel_check,
-                    progress_cb=progress_cb,
-                )
+            self.scrape_county(
+                state,
+                county,
+                max_pages=max_pages,
+                skip_existing_urls=known_urls,
+                with_photos=with_photos,
+                with_html=with_html,
+                cancel_check=cancel_check,
+                record_cb=_forward,
             )
         return records

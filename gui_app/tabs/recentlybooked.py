@@ -2,20 +2,25 @@
 from __future__ import annotations
 
 import threading
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import customtkinter as ctk
 
 from gui_app.lazy_tabs import LazyTabHost
+from gui_app.shared.record_sidebar import RecordSidebar
 from gui_app.theme import C, FONT_SM
 from gui_app.widgets import (
     _enable_tree_column_sort,
+    _hpaned,
     _stretch_columns,
     _tree_frame,
 )
 from scraper.database import Database
 from scraper.recentlybooked import RecentlyBookedScraper
 from scraper.searcher import ArrestSearcher, _is_compatible, format_race_label
+
+_RB_COLS = ["name", "race", "state", "county", "charge", "hint"]
+_RB_WIDTHS = [180, 80, 50, 100, 200, 140]
 
 
 class RecentlyBookedTabMixin:
@@ -36,6 +41,103 @@ class RecentlyBookedTabMixin:
         host.ensure("Live Feed")
         return host
 
+    def _rb_hint(self, record: Dict[str, Any], eth=None) -> str:
+        if eth is None:
+            eth = ArrestSearcher(self.db_path).ethnic_db
+        n = self._rb_name(record)
+        last = (record.get("last_name") or "").strip()
+        if not last and n:
+            last = n.split()[-1]
+        first = (record.get("first_name") or "").strip() or None
+        likely, conf, _ = eth.classify_by_name(last, first_name=first)
+        race = record.get("race") or ""
+        hint = f"{likely} {conf:.0%}"
+        if (
+            likely != "Unknown"
+            and race
+            and not _is_compatible(likely, race, record.get("ethnicity"))
+        ):
+            hint = f"FLAG {hint} vs {format_race_label(race)}"
+        return hint
+
+    @staticmethod
+    def _rb_name(record: Dict[str, Any]) -> str:
+        return (
+            record.get("full_name")
+            or f"{record.get('first_name') or ''} {record.get('last_name') or ''}".strip()
+            or "—"
+        )
+
+    def _rb_row_values(self, record: Dict[str, Any], eth=None) -> tuple:
+        return (
+            self._rb_name(record),
+            record.get("race") or "",
+            record.get("state") or "",
+            record.get("county") or "",
+            (record.get("charge_description") or "")[:40],
+            self._rb_hint(record, eth),
+        )
+
+    def _rb_split(
+        self, parent, *, records_attr: str, tree_attr: str, sidebar_attr: str
+    ):
+        """Tree on the left, photo/details sidebar on the right."""
+        pane = _hpaned(parent)
+        pane.pack(fill="both", expand=True, padx=8, pady=8)
+        left = ctk.CTkFrame(pane, fg_color="transparent")
+        wrap, tree = _tree_frame(left)
+        wrap.pack(fill="both", expand=True)
+        tree.configure(columns=_RB_COLS)
+        _enable_tree_column_sort(tree, _RB_COLS)
+        _stretch_columns(tree, _RB_COLS, _RB_WIDTHS)
+        sidebar = RecordSidebar(pane)
+        sidebar.bind_after(self.after)
+        pane.add(left, minsize=360, stretch="always")
+        pane.add(sidebar.frame, minsize=280, stretch="never")
+        setattr(self, records_attr, [])
+        setattr(self, tree_attr, tree)
+        setattr(self, sidebar_attr, sidebar)
+
+        def on_select(_event=None):
+            records: List[Dict[str, Any]] = getattr(self, records_attr)
+            sel = tree.selection()
+            if not sel:
+                sidebar.clear()
+                return
+            try:
+                idx = tree.index(sel[0])
+            except Exception:
+                return
+            if 0 <= idx < len(records):
+                sidebar.show(records[idx])
+
+        tree.bind("<<TreeviewSelect>>", on_select)
+        return tree, sidebar
+
+    def _rb_append_row(
+        self,
+        tree,
+        records: List[Dict[str, Any]],
+        record: Dict[str, Any],
+        *,
+        eth=None,
+        sidebar: Optional[RecordSidebar] = None,
+        select_latest: bool = False,
+        status_label=None,
+        status_fmt: str = "{n} records",
+    ) -> None:
+        records.append(record)
+        item = tree.insert("", "end", values=self._rb_row_values(record, eth))
+        if status_label is not None:
+            status_label.configure(text=status_fmt.format(n=len(records)))
+        if select_latest:
+            tree.selection_set(item)
+            tree.see(item)
+            if sidebar is not None:
+                sidebar.show(record)
+
+    # ── Live Feed ───────────────────────────────────────────────────────
+
     def _build_rb_live(self, tab):
         bar = ctk.CTkFrame(tab, fg_color=C["panel"])
         bar.pack(fill="x", padx=8, pady=8)
@@ -48,61 +150,73 @@ class RecentlyBookedTabMixin:
         ctk.CTkButton(
             bar, text="Import all", command=lambda: self._rb_import(True)
         ).pack(side="left", padx=5)
-        wrap, self.rb_tree = _tree_frame(tab)
-        wrap.pack(fill="both", expand=True, padx=8, pady=8)
-        cols = ["name", "race", "state", "county", "charge", "hint"]
-        self.rb_tree.configure(columns=cols)
-        _enable_tree_column_sort(self.rb_tree, cols)
-        _stretch_columns(self.rb_tree, cols)
-        self._rb_records: List[Dict[str, Any]] = []
+        self.rb_live_status = ctk.CTkLabel(
+            bar,
+            text="Homepage bookings — Refresh streams cards into the list.",
+            font=FONT_SM,
+            text_color=C["muted"],
+        )
+        self.rb_live_status.pack(side="left", padx=12)
+        self._rb_split(
+            tab,
+            records_attr="_rb_records",
+            tree_attr="rb_tree",
+            sidebar_attr="rb_live_sidebar",
+        )
 
     def _rb_refresh(self):
+        self.log("Live feed: fetching homepage…")
+        self.rb_live_status.configure(text="Refreshing…")
+        self._rb_records = []
+        self.rb_tree.delete(*self.rb_tree.get_children())
+        self.rb_live_sidebar.clear("Loading…")
+
         def work():
             try:
-                with RecentlyBookedScraper(
-                    delay=float(self.app_settings.get("rb_delay") or 1.0)
-                ) as s:
+                eth = ArrestSearcher(self.db_path).ethnic_db
+                delay = float(self.app_settings.get("rb_delay") or 1.0)
+
+                def on_record(rec: Dict[str, Any], n: int) -> None:
+                    row = dict(rec)
+
+                    def ui() -> None:
+                        self._rb_append_row(
+                            self.rb_tree,
+                            self._rb_records,
+                            row,
+                            eth=eth,
+                            sidebar=self.rb_live_sidebar,
+                            select_latest=(n == 1),
+                            status_label=self.rb_live_status,
+                            status_fmt="Live feed: {n} loaded…",
+                        )
+                        if n == 1 or n % 5 == 0:
+                            self.log(f"Live feed: {n} loaded…")
+
+                    self.after(0, ui)
+
+                with RecentlyBookedScraper(delay=delay) as s:
                     rows = s.scrape_live(
-                        with_photos=bool(self.app_settings.get("rb_with_photos", True)),
-                        with_html=bool(self.app_settings.get("rb_with_html", True)),
+                        import_details=True,
+                        with_photos=False,
+                        with_html=False,
+                        record_cb=on_record,
                     )
-                self.after(0, lambda: self._rb_show(rows))
+                self.after(
+                    0,
+                    lambda: self.rb_live_status.configure(
+                        text=f"Live feed: {len(rows)} records."
+                    ),
+                )
+                self.log(f"Live feed: {len(rows)} records.")
             except Exception as e:
                 self.log(f"Live feed failed: {e}")
+                self.after(
+                    0,
+                    lambda: self.rb_live_status.configure(text=f"Failed: {e}"),
+                )
 
         threading.Thread(target=work, daemon=True).start()
-
-    def _rb_show(self, rows: List[Dict[str, Any]]):
-        self._rb_records = rows
-        self.rb_tree.delete(*self.rb_tree.get_children())
-        eth = ArrestSearcher(self.db_path).ethnic_db
-        for r in rows:
-            n = (
-                r.get("full_name")
-                or f"{r.get('first_name') or ''} {r.get('last_name') or ''}".strip()
-            )
-            last = (r.get("last_name") or "").strip()
-            if not last and n:
-                last = n.split()[-1]
-            first = (r.get("first_name") or "").strip() or None
-            likely, conf, _ = eth.classify_by_name(last, first_name=first)
-            race = r.get("race") or ""
-            hint = f"{likely} {conf:.0%}"
-            if likely != "Unknown" and race and not _is_compatible(likely, race, r.get("ethnicity")):
-                hint = f"FLAG {hint} vs {format_race_label(race)}"
-            self.rb_tree.insert(
-                "",
-                "end",
-                values=(
-                    n,
-                    race,
-                    r.get("state") or "",
-                    r.get("county") or "",
-                    (r.get("charge_description") or "")[:40],
-                    hint,
-                ),
-            )
-        self.log(f"Live feed: {len(rows)} records.")
 
     def _rb_import(self, all_rows: bool):
         if not self._rb_records:
@@ -112,12 +226,58 @@ class RecentlyBookedTabMixin:
             rows = list(self._rb_records)
         else:
             indexes = [self.rb_tree.index(i) for i in self.rb_tree.selection()]
-            rows = [self._rb_records[i] for i in indexes if 0 <= i < len(self._rb_records)]
-        r = self.db.import_records(rows, skip_existing_urls=True)
-        self.log(
-            f"RecentlyBooked import: +{r['imported']}, {r['skipped']} skipped."
+            rows = [
+                self._rb_records[i]
+                for i in indexes
+                if 0 <= i < len(self._rb_records)
+            ]
+        if not rows:
+            self.log("No live-feed rows selected.")
+            return
+
+        with_photos = bool(self.app_settings.get("rb_with_photos", True))
+        with_html = bool(self.app_settings.get("rb_with_html", True))
+        delay = float(self.app_settings.get("rb_delay") or 1.0)
+        need_archive = (with_photos or with_html) and any(
+            (with_photos and not r.get("photo_path"))
+            or (with_html and not r.get("html_path"))
+            for r in rows
         )
-        self._refresh_db_status()
+
+        def work():
+            try:
+                to_import = rows
+                if need_archive:
+                    self.log(
+                        f"Live feed import: archiving {len(rows)} "
+                        f"(photos={with_photos}, html={with_html})…"
+                    )
+                    with RecentlyBookedScraper(delay=delay) as s:
+                        to_import = [
+                            s._process_record(
+                                dict(r),
+                                import_details=False,
+                                with_photos=with_photos,
+                                with_html=with_html,
+                            )
+                            for r in rows
+                        ]
+                db = Database(self.db_path)
+                try:
+                    result = db.import_records(to_import, skip_existing_urls=True)
+                finally:
+                    db.close()
+                self.log(
+                    f"RecentlyBooked import: +{result['imported']}, "
+                    f"{result['skipped']} skipped."
+                )
+                self.after(0, self._refresh_db_status)
+            except Exception as e:
+                self.log(f"Live feed import failed: {e}")
+
+        threading.Thread(target=work, daemon=True).start()
+
+    # ── Misclassify ─────────────────────────────────────────────────────
 
     def _build_rb_misclassify(self, tab):
         bar = ctk.CTkFrame(tab, fg_color=C["panel"])
@@ -176,6 +336,8 @@ class RecentlyBookedTabMixin:
 
         threading.Thread(target=work, daemon=True).start()
 
+    # ── Full Scrape ─────────────────────────────────────────────────────
+
     def _build_rb_full(self, tab):
         bar = ctk.CTkFrame(tab, fg_color=C["panel"])
         bar.pack(fill="x", padx=8, pady=8)
@@ -194,53 +356,120 @@ class RecentlyBookedTabMixin:
         ctk.CTkButton(
             bar, text="Cancel", command=lambda: setattr(self, "rb_cancel", True)
         ).pack(side="left", padx=5)
-        ctk.CTkLabel(
-            tab,
-            text="Saves detail HTML + photos by default (Settings → RecentlyBooked).",
+        self.rb_full_status = ctk.CTkLabel(
+            bar,
+            text="Records stream in live; select a row for photo/details.",
             font=FONT_SM,
             text_color=C["muted"],
-        ).pack(anchor="w", padx=12, pady=4)
+        )
+        self.rb_full_status.pack(side="left", padx=12)
+        self._rb_split(
+            tab,
+            records_attr="_rb_full_records",
+            tree_attr="rb_full_tree",
+            sidebar_attr="rb_full_sidebar",
+        )
 
     def _rb_full_start(self):
         self.rb_cancel = False
         state = self.rb_state.get().strip()
         county = self.rb_county.get().strip()
+        scrape_all = bool(self.rb_all.get())
+        if not scrape_all and not state:
+            self.log("Enter a state or enable All states.")
+            return
+
         db_path = self.db_path
         delay = float(self.app_settings.get("rb_delay") or 1.0)
         with_photos = bool(self.app_settings.get("rb_with_photos", True))
         with_html = bool(self.app_settings.get("rb_with_html", True))
-        scrape_all = bool(self.rb_all.get())
+
+        self._rb_full_records = []
+        self.rb_full_tree.delete(*self.rb_full_tree.get_children())
+        self.rb_full_sidebar.clear("Scraping…")
+        self.rb_full_status.configure(text="Starting…")
+        self.log("RecentlyBooked full scrape started…")
 
         def work():
+            imported = 0
+            skipped = 0
+            shown = [0]
             try:
+                eth = ArrestSearcher(db_path).ethnic_db
                 db = Database(db_path)
                 try:
                     known = db.existing_source_urls()
+
+                    def on_record(rec: Dict[str, Any], n: int) -> None:
+                        nonlocal imported, skipped
+                        row = dict(rec)
+                        try:
+                            result = db.import_records(
+                                [row], skip_existing_urls=True
+                            )
+                            imported += int(result.get("imported") or 0)
+                            skipped += int(result.get("skipped") or 0)
+                            url = str(row.get("source_url") or "")
+                            if url:
+                                known.add(url)
+                        except Exception as exc:
+                            row["scrape_error"] = (
+                                row.get("scrape_error") or f"import: {exc}"
+                            )
+
+                        def ui() -> None:
+                            self._rb_append_row(
+                                self.rb_full_tree,
+                                self._rb_full_records,
+                                row,
+                                eth=eth,
+                                sidebar=self.rb_full_sidebar,
+                                select_latest=(n == 1),
+                                status_label=self.rb_full_status,
+                                status_fmt=(
+                                    f"{{n}} shown · +{imported} imported · "
+                                    f"{skipped} skipped"
+                                ),
+                            )
+                            if n == 1 or n % 10 == 0:
+                                self.log(
+                                    f"RecentlyBooked: {n} records "
+                                    f"(+{imported} imported)"
+                                )
+
+                        self.after(0, ui)
+                        shown[0] = n
+
                     with RecentlyBookedScraper(delay=delay) as s:
                         kw = dict(
                             with_photos=with_photos,
                             with_html=with_html,
                             skip_existing_urls=known,
                             cancel_check=lambda: self.rb_cancel,
-                            progress_cb=lambda n, _: self.log(
-                                f"RecentlyBooked: {n} records"
-                            ),
+                            record_cb=on_record,
                         )
                         if scrape_all:
-                            rows = s.scrape_all(**kw)
+                            s.scrape_all(**kw)
                         elif county:
-                            rows = s.scrape_county(state, county, **kw)
-                        elif state:
-                            rows = s.scrape_state(state, **kw)
+                            s.scrape_county(state, county, **kw)
                         else:
-                            self.log("Enter a state or enable All states.")
-                            return
-                    r = db.import_records(rows, skip_existing_urls=True)
+                            s.scrape_state(state, **kw)
                 finally:
                     db.close()
-                self.log(f"RecentlyBooked full scrape: +{r['imported']} imported.")
+
+                msg = (
+                    f"RecentlyBooked full scrape done: "
+                    f"{shown[0]} shown, "
+                    f"+{imported} imported, {skipped} skipped."
+                )
+                self.log(msg)
+                self.after(0, lambda: self.rb_full_status.configure(text=msg))
                 self.after(0, self._refresh_db_status)
             except Exception as e:
                 self.log(f"RecentlyBooked scrape failed: {e}")
+                self.after(
+                    0,
+                    lambda: self.rb_full_status.configure(text=f"Failed: {e}"),
+                )
 
         threading.Thread(target=work, daemon=True).start()
