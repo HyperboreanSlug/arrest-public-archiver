@@ -274,7 +274,7 @@ def _draw_seal_watermark(
     *,
     photo_box: Tuple[int, int, int, int],
     text: str = _WATERMARK,
-    opacity: float = 0.35,
+    opacity: float = 0.30,
 ) -> None:
     """Center the Department seal on the mugshot with handle text beneath it."""
     overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
@@ -284,14 +284,20 @@ def _draw_seal_watermark(
 
     seal = _load_seal()
     if seal is not None:
-        # Cover most of the mugshot while leaving room for text under the seal.
-        target = int(min(photo_w, photo_h) * 0.88)
-        seal = seal.resize((target, target), Image.Resampling.LANCZOS)
+        # Cover the entire mugshot rectangle (scale to cover, center, clip).
+        scale = max(photo_w / seal.width, photo_h / seal.height)
+        new_w = max(1, int(round(seal.width * scale)))
+        new_h = max(1, int(round(seal.height * scale)))
+        seal = seal.resize((new_w, new_h), Image.Resampling.LANCZOS)
         seal = _with_opacity(seal, opacity)
-        seal_x = left + (photo_w - target) // 2
-        seal_y = top + max(8, int(photo_h * 0.06))
-        overlay.paste(seal, (seal_x, seal_y), seal)
-        text_top = seal_y + target + 8
+        layer = Image.new("RGBA", (photo_w, photo_h), (0, 0, 0, 0))
+        layer.paste(
+            seal,
+            ((photo_w - new_w) // 2, (photo_h - new_h) // 2),
+            seal,
+        )
+        overlay.paste(layer, (left, top), layer)
+        text_top = top + photo_h - max(48, photo_h // 12)
     else:
         text_top = top + photo_h // 2
 
@@ -301,7 +307,7 @@ def _draw_seal_watermark(
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     tx = left + (photo_w - tw) // 2
-    ty = min(bottom - th - 16, text_top)
+    ty = min(bottom - th - 12, max(top + 8, text_top))
     draw.text((tx, ty), text, font=font, fill=(255, 255, 255, alpha))
     canvas.alpha_composite(overlay)
 
@@ -318,8 +324,8 @@ def render_export_card(record: Mapping[str, Any]) -> Image.Image:
     mug = _load_mugshot(record, photo_box).convert("RGBA")
     canvas.paste(mug, (margin, margin), mug if mug.mode == "RGBA" else None)
 
-    # Seal + @handle watermark on the mugshot at 35% opacity
-    _draw_seal_watermark(canvas, photo_box=photo_rect, opacity=0.35)
+    # Seal + @handle watermark filling the mugshot at 30% opacity
+    _draw_seal_watermark(canvas, photo_box=photo_rect, opacity=0.30)
 
     # Accent bar under photo
     bar_y = margin + _PHOTO_H + 18
