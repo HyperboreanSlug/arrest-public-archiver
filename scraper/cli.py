@@ -260,8 +260,21 @@ def cmd_recentlybooked(args: argparse.Namespace) -> None:
             if args.do_import:
                 db = Database(db_path)
                 try:
-                    r = db.import_records(rows, skip_existing_urls=not args.force)
-                    print(f"  Import +{r['imported']} (skipped {r['skipped']})")
+                    purged = db.delete_arrests_without_real_photos(
+                        source_system="recentlybooked"
+                    )
+                    if purged:
+                        print(f"  Deleted {purged} arrests without a real photo")
+                    r = db.import_records(
+                        rows,
+                        skip_existing_urls=not args.force,
+                        require_photo=True,
+                    )
+                    print(
+                        f"  Import +{r['imported']} "
+                        f"(skipped {r['skipped']}, "
+                        f"no-photo dropped {r.get('rejected_no_photo', 0)})"
+                    )
                 finally:
                     db.close()
             return
@@ -300,8 +313,21 @@ def cmd_recentlybooked(args: argparse.Namespace) -> None:
         print(f"  Collected {len(rows)} records")
         db = Database(db_path)
         try:
-            r = db.import_records(rows, skip_existing_urls=not args.force)
-            print(f"  Import +{r['imported']} (skipped {r['skipped']}) → {db_path}")
+            purged = db.delete_arrests_without_real_photos(
+                source_system="recentlybooked"
+            )
+            if purged:
+                print(f"  Deleted {purged} arrests without a real photo")
+            r = db.import_records(
+                rows,
+                skip_existing_urls=not args.force,
+                require_photo=True,
+            )
+            print(
+                f"  Import +{r['imported']} "
+                f"(skipped {r['skipped']}, "
+                f"no-photo dropped {r.get('rejected_no_photo', 0)}) → {db_path}"
+            )
         finally:
             db.close()
     finally:

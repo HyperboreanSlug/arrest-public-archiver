@@ -11,7 +11,7 @@ import hashlib
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional, Set, Tuple, Union
+from typing import Any, Mapping, Optional, Set, Tuple, Union
 
 # Byte-identical CO "no photo" silhouette (299×289 L JPEG, ~7.2 KB).
 # RecentlyBooked default mugshot stubs (~1–2 KB webp).
@@ -110,6 +110,22 @@ def url_looks_like_chrome(url: str) -> bool:
 def is_placeholder_photo_url(url: Optional[str]) -> bool:
     """True when a photo URL is a known no-photo / chrome stub."""
     return url_looks_like_chrome(str(url or ""))
+
+
+def record_has_real_photo(record: Optional[Mapping[str, Any]]) -> bool:
+    """True when *record* has a real mugshot file on disk (not missing/placeholder)."""
+    if not record:
+        return False
+    url = str(record.get("photo_url") or "").strip()
+    if url and is_placeholder_photo_url(url):
+        return False
+    path = str(record.get("photo_path") or "").strip()
+    if not path:
+        return False
+    p = Path(path)
+    if not p.is_file():
+        return False
+    return not is_placeholder_photo(p)
 
 
 def _heuristic_silhouette(path: Path) -> bool:

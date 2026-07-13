@@ -243,26 +243,10 @@ class RecentlyBookedTabMixin:
 
     @staticmethod
     def _rb_has_photo(record: Dict[str, Any]) -> bool:
-        """True only for a real mugshot — not missing or placeholder stubs."""
-        from scraper.mugshot_ethnicity.photo_quality import (
-            is_placeholder_photo,
-            is_placeholder_photo_url,
-        )
+        """True only for a real mugshot file on disk — not missing or placeholder."""
+        from scraper.mugshot_ethnicity.photo_quality import record_has_real_photo
 
-        url = str(record.get("photo_url") or "").strip()
-        path = str(record.get("photo_path") or "").strip()
-        if url and is_placeholder_photo_url(url):
-            return False
-        if path:
-            try:
-                from pathlib import Path
-
-                p = Path(path)
-                if p.is_file():
-                    return not is_placeholder_photo(p)
-            except Exception:
-                pass
-        return bool(url)
+        return record_has_real_photo(record)
 
     @classmethod
     def _rb_filter_rows(
@@ -437,7 +421,8 @@ class RecentlyBookedTabMixin:
                 eth = ArrestSearcher(self.db_path).ethnic_db
                 self._rb_live_eth = eth
                 delay = min(0.35, float(self.app_settings.get("rb_delay") or 1.0))
-                with_photos = bool(self.app_settings.get("rb_with_photos", True))
+                # Real mugshot required to store; always archive photos.
+                with_photos = True
                 with_html = bool(self.app_settings.get("rb_with_html", True))
                 known = {
                     str(r.get("source_url") or "")
@@ -473,9 +458,19 @@ class RecentlyBookedTabMixin:
                     else:
                         imported = 0
                         skipped = 0
+                        rejected = 0
                         new_rows: List[Dict[str, Any]] = []
                         db = Database(self.db_path)
                         try:
+                            if not incremental:
+                                purged = db.delete_arrests_without_real_photos(
+                                    source_system="recentlybooked"
+                                )
+                                if purged:
+                                    self.log(
+                                        f"Live feed: deleted {purged} "
+                                        "arrests without a real photo."
+                                    )
                             with RecentlyBookedScraper(client=client) as s:
                                 for i, card in enumerate(to_fetch, start=1):
                                     done = s._process_record(
@@ -486,10 +481,15 @@ class RecentlyBookedTabMixin:
                                     )
                                     try:
                                         result = db.import_records(
-                                            [done], skip_existing_urls=True
+                                            [done],
+                                            skip_existing_urls=True,
+                                            require_photo=True,
                                         )
                                         imported += int(result.get("imported") or 0)
                                         skipped += int(result.get("skipped") or 0)
+                                        rejected += int(
+                                            result.get("rejected_no_photo") or 0
+                                        )
                                         url = str(done.get("source_url") or "")
                                         if not done.get("id") and url:
                                             found = db._conn.execute(
@@ -506,12 +506,15 @@ class RecentlyBookedTabMixin:
                                             if done.get("scrape_error")
                                             else f"import: {exc}"
                                         )
-                                    new_rows.append(done)
+                                    # Only keep bookings that have / were stored with a real photo.
+                                    if self._rb_has_photo(done) or done.get("id"):
+                                        new_rows.append(done)
                                     if i == 1 or i % 5 == 0:
                                         self.log(
                                             f"Live feed: "
                                             f"{'+' + str(i) if incremental else str(i)} "
-                                            f"loaded · +{imported} imported…"
+                                            f"loaded · +{imported} imported · "
+                                            f"{rejected} no-photo dropped…"
                                         )
                         finally:
                             db.close()
@@ -556,6 +559,7 @@ class RecentlyBookedTabMixin:
                                     else ""
                                 )
                                 + f" · +{imported} imported · {skipped} skipped"
+                                + f" · {rejected} no-photo dropped"
                                 + f" · {mode}."
                             )
                             self.rb_live_status.configure(text=msg)
@@ -884,7 +888,7 @@ class RecentlyBookedTabMixin:
             save_settings(self.app_settings)
         except Exception:
             pass
-        with_photos = bool(self.app_settings.get("rb_with_photos", True))
+        with_photos = True  # required to store arrests
         with_html = bool(self.app_settings.get("rb_with_html", True))
 
         self._rb_full_all = []
@@ -902,6 +906,7 @@ class RecentlyBookedTabMixin:
         def work():
             imported = 0
             skipped = 0
+            rejected = 0
             shown = [0]
             import_lock = threading.Lock()
             try:
@@ -909,25 +914,38 @@ class RecentlyBookedTabMixin:
                 self._rb_full_eth = eth
                 db = Database(db_path)
                 try:
+                    purged = db.delete_arrests_without_real_photos(
+                        source_system="recentlybooked"
+                    )
+                    if purged:
+                        self.log(
+                            f"Full scrape: deleted {purged} "
+                            "arrests without a real photo."
+                        )
                     known = db.existing_source_urls()
 
                     def on_record(rec: Dict[str, Any], n: int) -> None:
-                        nonlocal imported, skipped
+                        nonlocal imported, skipped, rejected
                         row = dict(rec)
                         try:
                             with import_lock:
                                 result = db.import_records(
-                                    [row], skip_existing_urls=True
+                                    [row],
+                                    skip_existing_urls=True,
+                                    require_photo=True,
                                 )
                                 imported += int(result.get("imported") or 0)
                                 skipped += int(result.get("skipped") or 0)
+                                rejected += int(
+                                    result.get("rejected_no_photo") or 0
+                                )
                                 url = str(row.get("source_url") or "")
-                                if url:
+                                if url and (
+                                    result.get("imported")
+                                    or result.get("skipped")
+                                ):
                                     known.add(url)
-                                # Prefer scraper-known skip over DB skip: URL was
-                                # reserved before fetch, so a skip here means it
-                                # landed in DB from another path — still bind id.
-                                if not row.get("id") and url:
+                                if not row.get("id") and url and result.get("imported"):
                                     found = db._conn.execute(
                                         "SELECT id FROM arrests "
                                         "WHERE source_url = ? "
@@ -951,6 +969,17 @@ class RecentlyBookedTabMixin:
                             )
 
                         def ui() -> None:
+                            # Drop no-photo / placeholder bookings from the UI list.
+                            if not (self._rb_has_photo(row) or row.get("id")):
+                                self.rb_full_status.configure(
+                                    text=(
+                                        f"{len(self._rb_full_records)}/"
+                                        f"{len(self._rb_full_all)} shown · "
+                                        f"+{imported} imported · {skipped} skipped · "
+                                        f"{rejected} no-photo dropped · {workers}t"
+                                    )
+                                )
+                                return
                             self._rb_full_all.append(row)
                             hide_race, hide_photo = self._rb_full_filter_flags()
                             visible = True
@@ -979,13 +1008,16 @@ class RecentlyBookedTabMixin:
                                 text=(
                                     f"{shown_n}/{total_n} shown · "
                                     f"+{imported} imported · {skipped} skipped · "
+                                    f"{rejected} no-photo dropped · "
                                     f"{workers}t · {mode}"
                                 )
                             )
                             if n == 1 or n % 10 == 0:
                                 self.log(
-                                    f"RecentlyBooked: {n} records "
-                                    f"(+{imported} imported, {workers} threads)"
+                                    f"RecentlyBooked: {n} scraped "
+                                    f"(+{imported} imported, "
+                                    f"{rejected} no-photo dropped, "
+                                    f"{workers} threads)"
                                 )
 
                         self.after(0, ui)
@@ -1012,7 +1044,8 @@ class RecentlyBookedTabMixin:
                 msg = (
                     f"RecentlyBooked full scrape done: "
                     f"{len(self._rb_full_records)}/{len(self._rb_full_all)} shown, "
-                    f"+{imported} imported, {skipped} skipped "
+                    f"+{imported} imported, {skipped} skipped, "
+                    f"{rejected} no-photo dropped "
                     f"({workers} threads)."
                 )
                 self.log(msg)
