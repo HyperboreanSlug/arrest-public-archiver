@@ -68,3 +68,9 @@ class RecentlyBookedClient:
     def close(self) -> None:
         """Release the underlying HTTP connection pool."""
         self.session.close()
+
+    def __enter__(self) -> "RecentlyBookedClient":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self.close()

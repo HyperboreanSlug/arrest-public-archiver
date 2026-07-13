@@ -235,10 +235,16 @@ class RecentlyBookedTabMixin:
 
     # ── Live Feed ───────────────────────────────────────────────────────
 
+    _RB_LIVE_POLL_MS = 8000
+
+    @staticmethod
+    def _rb_has_race(record: Dict[str, Any]) -> bool:
+        return bool(str(record.get("race") or "").strip())
+
     def _build_rb_live(self, tab):
         bar = ctk.CTkFrame(tab, fg_color=C["panel"])
         bar.pack(fill="x", padx=8, pady=8)
-        ctk.CTkButton(bar, text="Refresh", command=self._rb_refresh).pack(
+        ctk.CTkButton(bar, text="Refresh", command=lambda: self._rb_refresh(False)).pack(
             side="left", padx=5, pady=8
         )
         ctk.CTkButton(
@@ -247,80 +253,235 @@ class RecentlyBookedTabMixin:
         ctk.CTkButton(
             bar, text="Import all", command=lambda: self._rb_import(True)
         ).pack(side="left", padx=5)
+        self.rb_live_auto_var = ctk.BooleanVar(value=True)
+        self.rb_live_auto = ctk.CTkCheckBox(
+            bar,
+            text="Auto-update",
+            variable=self.rb_live_auto_var,
+            command=self._rb_live_on_auto_toggle,
+        )
+        self.rb_live_auto.pack(side="left", padx=8)
+        self.rb_live_hide_no_race = False
+        self.rb_live_filter_btn = ctk.CTkButton(
+            bar,
+            text="Hide no race",
+            width=110,
+            command=self._rb_live_toggle_no_race_filter,
+        )
+        self.rb_live_filter_btn.pack(side="left", padx=5)
         self.rb_live_status = ctk.CTkLabel(
             bar,
-            text="Homepage bookings — Refresh streams cards into the list.",
+            text="Live feed auto-updates every few seconds.",
             font=FONT_SM,
             text_color=C["muted"],
         )
         self.rb_live_status.pack(side="left", padx=12)
+        self._rb_live_all: List[Dict[str, Any]] = []
+        self._rb_live_busy = False
+        self._rb_live_poll_after = None
         self._rb_split(
             tab,
             records_attr="_rb_records",
             tree_attr="rb_tree",
             sidebar_attr="rb_live_sidebar",
         )
+        self.after(200, lambda: self._rb_refresh(False))
+        self.after(self._RB_LIVE_POLL_MS, self._rb_live_tick)
 
-    def _rb_refresh(self):
-        self.log("Live feed: fetching homepage…")
-        self.rb_live_status.configure(text="Refreshing…")
-        self._rb_records = []
+    def _rb_live_on_auto_toggle(self):
+        if self.rb_live_auto_var.get():
+            self.log("Live feed: auto-update on.")
+            if not self._rb_live_busy:
+                self._rb_refresh(True)
+        else:
+            self.log("Live feed: auto-update off.")
+
+    def _rb_live_toggle_no_race_filter(self):
+        self.rb_live_hide_no_race = not self.rb_live_hide_no_race
+        if self.rb_live_hide_no_race:
+            self.rb_live_filter_btn.configure(text="Show no race")
+        else:
+            self.rb_live_filter_btn.configure(text="Hide no race")
+        self._rb_rebuild_live_tree()
+        shown = len(self._rb_records)
+        total = len(self._rb_live_all)
+        mode = "hiding no-race" if self.rb_live_hide_no_race else "showing all"
+        self.rb_live_status.configure(
+            text=f"Live feed: {shown}/{total} shown ({mode})."
+        )
+        self.log(f"Live feed filter: {mode} ({shown}/{total}).")
+
+    def _rb_rebuild_live_tree(self, *, select_url: Optional[str] = None) -> None:
+        eth = getattr(self, "_rb_live_eth", None)
+        if self.rb_live_hide_no_race:
+            shown = [r for r in self._rb_live_all if self._rb_has_race(r)]
+        else:
+            shown = list(self._rb_live_all)
+        self._rb_records = shown
         self.rb_tree.delete(*self.rb_tree.get_children())
-        self.rb_live_sidebar.clear("Loading…")
+        select_item = None
+        for rec in shown:
+            item = self.rb_tree.insert(
+                "", "end", values=self._rb_row_values(rec, eth)
+            )
+            if select_url and str(rec.get("source_url") or "") == select_url:
+                select_item = item
+        if select_item:
+            self.rb_tree.selection_set(select_item)
+            self.rb_tree.see(select_item)
+            idx = self.rb_tree.index(select_item)
+            if 0 <= idx < len(self._rb_records):
+                self.rb_live_sidebar.show(self._rb_records[idx])
+        elif not shown:
+            self.rb_live_sidebar.clear("No rows match filter.")
+
+    def _rb_live_tick(self):
+        try:
+            if bool(self.rb_live_auto_var.get()) and not self._rb_live_busy:
+                self._rb_refresh(True)
+        except Exception:
+            pass
+        try:
+            self._rb_live_poll_after = self.after(
+                self._RB_LIVE_POLL_MS, self._rb_live_tick
+            )
+        except Exception:
+            self._rb_live_poll_after = None
+
+    def _rb_refresh(self, incremental: bool = False):
+        if self._rb_live_busy:
+            return
+        self._rb_live_busy = True
+        mode = "Updating…" if incremental else "Refreshing…"
+        self.rb_live_status.configure(text=mode)
+        if not incremental:
+            self.log("Live feed: fetching homepage…")
+            self._rb_live_all = []
+            self._rb_records = []
+            self.rb_tree.delete(*self.rb_tree.get_children())
+            self.rb_live_sidebar.clear("Loading…")
 
         def work():
+            added = 0
             try:
                 eth = ArrestSearcher(self.db_path).ethnic_db
-                delay = float(self.app_settings.get("rb_delay") or 1.0)
+                self._rb_live_eth = eth
+                delay = min(0.35, float(self.app_settings.get("rb_delay") or 1.0))
+                known = {
+                    str(r.get("source_url") or "")
+                    for r in self._rb_live_all
+                    if r.get("source_url")
+                }
 
-                def on_record(rec: Dict[str, Any], n: int) -> None:
-                    row = dict(rec)
+                from scraper.recentlybooked.client import RecentlyBookedClient
+                from scraper.recentlybooked.live_feed import fetch_live_feed
 
-                    def ui() -> None:
-                        self._rb_append_row(
-                            self.rb_tree,
-                            self._rb_records,
-                            row,
-                            eth=eth,
-                            sidebar=self.rb_live_sidebar,
-                            select_latest=(n == 1),
-                            status_label=self.rb_live_status,
-                            status_fmt="Live feed: {n} loaded…",
+                with RecentlyBookedClient(delay=delay) as client:
+                    cards = fetch_live_feed(client, import_details=False)
+                    if not incremental:
+                        # Full refresh: enrich every homepage card.
+                        to_fetch = cards
+                    else:
+                        to_fetch = [
+                            c
+                            for c in cards
+                            if str(c.get("source_url") or "") not in known
+                        ]
+                    if incremental and not to_fetch:
+                        self.after(
+                            0,
+                            lambda: self.rb_live_status.configure(
+                                text=(
+                                    f"Live feed: {len(self._rb_records)}/"
+                                    f"{len(self._rb_live_all)} shown · "
+                                    "no new bookings."
+                                )
+                            ),
                         )
-                        if n == 1 or n % 5 == 0:
-                            self.log(f"Live feed: {n} loaded…")
+                    else:
+                        with RecentlyBookedScraper(client=client) as s:
+                            # Keep homepage order (newest first) for full refresh.
+                            new_rows: List[Dict[str, Any]] = []
+                            for i, card in enumerate(to_fetch, start=1):
+                                done = s._process_record(
+                                    dict(card),
+                                    import_details=True,
+                                    with_photos=False,
+                                    with_html=False,
+                                )
+                                new_rows.append(done)
+                                if i == 1 or i % 5 == 0:
+                                    self.log(
+                                        f"Live feed: "
+                                        f"{'+' + str(i) if incremental else str(i)} "
+                                        f"loaded…"
+                                    )
 
-                    self.after(0, ui)
+                        def ui() -> None:
+                            if incremental:
+                                # Prepend newest homepage arrivals.
+                                self._rb_live_all = new_rows + self._rb_live_all
+                                # De-dupe while preserving order.
+                                seen = set()
+                                merged = []
+                                for r in self._rb_live_all:
+                                    u = str(r.get("source_url") or "")
+                                    if u and u in seen:
+                                        continue
+                                    if u:
+                                        seen.add(u)
+                                    merged.append(r)
+                                self._rb_live_all = merged
+                                added_n = len(new_rows)
+                            else:
+                                self._rb_live_all = new_rows
+                                added_n = len(new_rows)
+                            self._rb_rebuild_live_tree(
+                                select_url=(
+                                    str(new_rows[0].get("source_url") or "")
+                                    if new_rows
+                                    else None
+                                )
+                            )
+                            shown = len(self._rb_records)
+                            total = len(self._rb_live_all)
+                            msg = (
+                                f"Live feed: {shown}/{total} shown"
+                                + (
+                                    f" · +{added_n} new"
+                                    if incremental
+                                    else ""
+                                )
+                                + (
+                                    " · hiding no-race"
+                                    if self.rb_live_hide_no_race
+                                    else ""
+                                )
+                                + "."
+                            )
+                            self.rb_live_status.configure(text=msg)
+                            self.log(msg)
 
-                with RecentlyBookedScraper(delay=delay) as s:
-                    rows = s.scrape_live(
-                        import_details=True,
-                        with_photos=False,
-                        with_html=False,
-                        record_cb=on_record,
-                    )
-                self.after(
-                    0,
-                    lambda: self.rb_live_status.configure(
-                        text=f"Live feed: {len(rows)} records."
-                    ),
-                )
-                self.log(f"Live feed: {len(rows)} records.")
+                        self.after(0, ui)
             except Exception as e:
                 self.log(f"Live feed failed: {e}")
                 self.after(
                     0,
                     lambda: self.rb_live_status.configure(text=f"Failed: {e}"),
                 )
+            finally:
+                self.after(0, lambda: setattr(self, "_rb_live_busy", False))
 
         threading.Thread(target=work, daemon=True).start()
 
     def _rb_import(self, all_rows: bool):
-        if not self._rb_records:
+        # Import from currently displayed rows (respects Hide no race filter).
+        source = self._rb_records if all_rows or self._rb_records else self._rb_live_all
+        if not source and not self._rb_live_all:
             self.log("No live-feed rows to import.")
             return
         if all_rows:
-            rows = list(self._rb_records)
+            rows = list(self._rb_records if self._rb_records else self._rb_live_all)
         else:
             indexes = [self.rb_tree.index(i) for i in self.rb_tree.selection()]
             rows = [
