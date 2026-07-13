@@ -141,18 +141,18 @@ class DeepfaceReportsTabMixin:
             side="left", padx=(4, 4)
         )
         self.dfr_min_conf = ctk.CTkEntry(
-            bar, width=56, placeholder_text="0.85",
+            bar, width=56, placeholder_text="0.75",
             fg_color=C["bg"], border_color=C["border"], text_color=C["text"],
         )
         # Match DeepFace → Scan default (and last saved scan settings)
-        _min_default = "0.85"
+        _min_default = "0.75"
         try:
             sett = getattr(self, "app_settings", None) or {}
             if not sett:
                 from scraper.app_settings import load_settings
 
                 sett = load_settings()
-            _min_default = str(sett.get("deepface_scan_min_conf") or "0.85")
+            _min_default = str(sett.get("deepface_scan_min_conf") or "0.75")
         except Exception:
             pass
         self.dfr_min_conf.insert(0, _min_default)

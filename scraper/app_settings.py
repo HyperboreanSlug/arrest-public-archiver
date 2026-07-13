@@ -28,7 +28,7 @@ DEFAULTS: Dict[str, Any] = {
     "deepface_detector": "retinaface",
     "deepface_weight_models": "Race",
     "deepface_scan_state": "",
-    "deepface_scan_min_conf": "0.85",
+    "deepface_scan_min_conf": "0.75",
     "deepface_scan_limit": "0",
     "deepface_scan_recorded": "WHITE",
     "deepface_scan_faces": "black,indian,asian",

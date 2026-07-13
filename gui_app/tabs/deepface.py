@@ -133,11 +133,11 @@ class DeepfaceTabMixin:
             row=0, column=1, sticky="w", padx=(0, 8), pady=2
         )
         self.df_scan_min_conf = ctk.CTkEntry(
-            grid, width=80, placeholder_text="0.85",
+            grid, width=80, placeholder_text="0.75",
             fg_color=C["bg"], border_color=C["border"], text_color=C["text"],
         )
         self.df_scan_min_conf.grid(row=1, column=1, sticky="ew", padx=(0, 12), pady=(0, 6))
-        self.df_scan_min_conf.insert(0, str(sett.get("deepface_scan_min_conf") or "0.85"))
+        self.df_scan_min_conf.insert(0, str(sett.get("deepface_scan_min_conf") or "0.75"))
 
         ctk.CTkLabel(grid, text="Max candidates (0=all)", font=FONT_SM, text_color=C["muted"]).grid(
             row=0, column=2, sticky="w", padx=(0, 8), pady=2
@@ -502,9 +502,9 @@ class DeepfaceTabMixin:
                 return default
 
         try:
-            min_conf = float(_f(self.df_scan_min_conf, "0.85") or "0.85")
+            min_conf = float(_f(self.df_scan_min_conf, "0.75") or "0.75")
         except ValueError:
-            min_conf = 0.85
+            min_conf = 0.75
         try:
             limit = int(float(_f(self.df_scan_limit, "0") or "0"))
         except ValueError:
