@@ -7,7 +7,12 @@ from typing import Any, Dict, List, Optional
 import customtkinter as ctk
 
 from gui_app.lazy_tabs import LazyTabHost
-from gui_app.shared.record_sidebar import RecordSidebar, merge_ethnicity_review_flags
+from gui_app.shared.record_sidebar import (
+    RecordSidebar,
+    merge_ethnicity_review_flags,
+    merge_race_manual_flags,
+    race_manual_override,
+)
 from gui_app.theme import C, FONT_SM
 from gui_app.widgets import (
     _enable_tree_column_sort,
@@ -647,6 +652,9 @@ class RecentlyBookedTabMixin:
     def _rb_mc_set_actual_race(self, record: Dict[str, Any], actual: str) -> None:
         actual = (actual or "").strip() or "Unknown"
         record["likely_ethnicity"] = actual
+        # Mark this as a human-picked race so surname analysis never clobbers it.
+        flags_json = merge_race_manual_flags(record.get("flags"))
+        record["flags"] = flags_json
         rid = record.get("id")
         source_url = str(record.get("source_url") or "").strip()
         # Keep list + tree column in sync (address the row by iid, not
@@ -656,6 +664,7 @@ class RecentlyBookedTabMixin:
             same_url = source_url and existing.get("source_url") == source_url
             if same_id or same_url or existing is record:
                 existing["likely_ethnicity"] = actual
+                existing["flags"] = flags_json
                 iid = tree_iid_for_record(self.rb_mc_tree, existing)
                 if iid is not None:
                     vals = list(self.rb_mc_tree.item(iid, "values"))
@@ -677,7 +686,10 @@ class RecentlyBookedTabMixin:
                 db.close()
         if rid is not None:
             try:
-                self.db.update_arrest(int(rid), {"likely_ethnicity": actual})
+                self.db.update_arrest(
+                    int(rid),
+                    {"likely_ethnicity": actual, "flags": flags_json},
+                )
                 self.log(f"RB misclass actual race set: {actual}")
             except Exception as exc:
                 self.log(f"Could not save actual race: {exc}")
@@ -690,11 +702,29 @@ class RecentlyBookedTabMixin:
 
         def work():
             s = ArrestSearcher(self.db_path)
+            persisted = 0
             try:
                 rows, base = s.analyze_ethnicities(
                     source_system="recentlybooked",
                     return_base_count=True,
                 )
+                # Carry the surname-assumed race into likely_ethnicity so
+                # Browse picks it up — but never overwrite a manual override.
+                for mc in rows:
+                    rec = mc.record or {}
+                    rid = rec.get("id")
+                    assumed = (mc.likely_ethnicity or "").strip()
+                    if rid is None or not assumed:
+                        continue
+                    if race_manual_override(rec):
+                        continue
+                    try:
+                        s.db.update_arrest(
+                            int(rid), {"likely_ethnicity": assumed}
+                        )
+                        persisted += 1
+                    except Exception:
+                        pass
             finally:
                 s.close()
 
@@ -729,7 +759,8 @@ class RecentlyBookedTabMixin:
                     tree_row_bind(self.rb_mc_tree, item, rec)
                 msg = (
                     f"RecentlyBooked surname analysis: "
-                    f"{len(rows)} flags from {base} names."
+                    f"{len(rows)} flags from {base} names"
+                    + (f" · {persisted} assumed races carried over." if persisted else ".")
                 )
                 self.log(msg)
                 self.rb_mc_status.configure(text=msg)

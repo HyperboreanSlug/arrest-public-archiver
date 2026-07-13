@@ -12,6 +12,7 @@ from gui_app.shared.record_sidebar import (
     ACTUAL_RACE_OPTIONS,
     RecordSidebar,
     merge_ethnicity_review_flags,
+    merge_race_manual_flags,
 )
 from gui_app.theme import C, FONT_SM
 from gui_app.widgets import (
@@ -313,10 +314,16 @@ class MisclassifyTabMixin:
     def _browse_sidebar_actual_race(self, record: Dict[str, Any], actual: str):
         actual = (actual or "Unknown").strip() or "Unknown"
         record["likely_ethnicity"] = actual
+        # Mark this as a human-picked race so surname analysis never clobbers it.
+        flags_json = merge_race_manual_flags(record.get("flags"))
+        record["flags"] = flags_json
         rid = record.get("id")
         if rid is not None:
             try:
-                self.db.update_arrest(int(rid), {"likely_ethnicity": actual})
+                self.db.update_arrest(
+                    int(rid),
+                    {"likely_ethnicity": actual, "flags": flags_json},
+                )
             except Exception as exc:
                 self.browse_status.configure(text=f"Could not save actual race: {exc}")
                 return
@@ -324,6 +331,7 @@ class MisclassifyTabMixin:
         if idx is not None:
             rec = self._browse_records[idx]
             rec["likely_ethnicity"] = actual
+            rec["flags"] = flags_json
             want = (self.browse_actual_race_filter.get() or "All").strip()
             if want not in ("All", "", None) and want != "(Unset)" and want != actual:
                 self._browse_drop_row(idx)

@@ -83,6 +83,51 @@ def merge_ethnicity_review_flags(raw_flags: Any, verdict: str) -> str:
     return json.dumps(flags, ensure_ascii=False, sort_keys=True)
 
 
+def merge_race_manual_flags(raw_flags: Any) -> str:
+    """Mark a manual actual-race override in the arrests.flags JSON blob.
+
+    The marker lets surname-assumed race carry over into ``likely_ethnicity``
+    only when the value was not hand-picked by a human.
+    """
+    import json
+    from datetime import datetime, timezone
+
+    if isinstance(raw_flags, dict):
+        flags: Dict[str, Any] = dict(raw_flags)
+    elif isinstance(raw_flags, str) and raw_flags.strip():
+        try:
+            parsed = json.loads(raw_flags)
+            flags = dict(parsed) if isinstance(parsed, dict) else {"notes": raw_flags}
+        except Exception:
+            flags = {"notes": raw_flags}
+    else:
+        flags = {}
+    flags["race_manual"] = True
+    flags["race_manual_at"] = datetime.now(timezone.utc).isoformat()
+    return json.dumps(flags, ensure_ascii=False, sort_keys=True)
+
+
+def race_manual_override(record_or_flags: Any) -> bool:
+    """True when arrests.flags records a manual actual-race override.
+
+    Accepts either a record dict (reads its ``flags``) or a flags value
+    (dict or JSON string).
+    """
+    import json
+
+    raw = record_or_flags
+    if isinstance(record_or_flags, dict) and "flags" in record_or_flags:
+        raw = record_or_flags.get("flags")
+    if isinstance(raw, str) and raw.strip():
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            return False
+    if not isinstance(raw, dict):
+        return False
+    return bool(raw.get("race_manual"))
+
+
 def _resolve_photo_path(raw: Any) -> Optional[Path]:
     text = str(raw or "").strip()
     if not text:
