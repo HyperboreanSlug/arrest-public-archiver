@@ -728,6 +728,14 @@ class RecentlyBookedTabMixin:
         ctk.CTkButton(
             bar, text="Cancel", command=lambda: setattr(self, "rb_cancel", True)
         ).pack(side="left", padx=5)
+        self.rb_full_hide_no_race = False
+        self.rb_full_filter_btn = ctk.CTkButton(
+            bar,
+            text="Hide no race",
+            width=110,
+            command=self._rb_full_toggle_no_race_filter,
+        )
+        self.rb_full_filter_btn.pack(side="left", padx=5)
         self.rb_full_status = ctk.CTkLabel(
             bar,
             text="Multi-thread counties; set Threads + Delay per request.",
@@ -735,12 +743,53 @@ class RecentlyBookedTabMixin:
             text_color=C["muted"],
         )
         self.rb_full_status.pack(side="left", padx=12)
+        self._rb_full_all: List[Dict[str, Any]] = []
         self._rb_split(
             tab,
             records_attr="_rb_full_records",
             tree_attr="rb_full_tree",
             sidebar_attr="rb_full_sidebar",
         )
+
+    def _rb_full_toggle_no_race_filter(self):
+        self.rb_full_hide_no_race = not self.rb_full_hide_no_race
+        if self.rb_full_hide_no_race:
+            self.rb_full_filter_btn.configure(text="Show no race")
+        else:
+            self.rb_full_filter_btn.configure(text="Hide no race")
+        self._rb_rebuild_full_tree()
+        shown = len(self._rb_full_records)
+        total = len(getattr(self, "_rb_full_all", []) or [])
+        mode = "hiding no-race" if self.rb_full_hide_no_race else "showing all"
+        self.rb_full_status.configure(
+            text=f"Full scrape: {shown}/{total} shown ({mode})."
+        )
+        self.log(f"Full scrape filter: {mode} ({shown}/{total}).")
+
+    def _rb_rebuild_full_tree(self, *, select_url: Optional[str] = None) -> None:
+        eth = getattr(self, "_rb_full_eth", None)
+        all_rows = getattr(self, "_rb_full_all", []) or []
+        if self.rb_full_hide_no_race:
+            shown = [r for r in all_rows if self._rb_has_race(r)]
+        else:
+            shown = list(all_rows)
+        self._rb_full_records = shown
+        self.rb_full_tree.delete(*self.rb_full_tree.get_children())
+        select_item = None
+        for rec in shown:
+            item = self.rb_full_tree.insert(
+                "", "end", values=self._rb_row_values(rec, eth)
+            )
+            if select_url and str(rec.get("source_url") or "") == select_url:
+                select_item = item
+        if select_item:
+            self.rb_full_tree.selection_set(select_item)
+            self.rb_full_tree.see(select_item)
+            idx = self.rb_full_tree.index(select_item)
+            if 0 <= idx < len(self._rb_full_records):
+                self.rb_full_sidebar.show(self._rb_full_records[idx])
+        elif not shown:
+            self.rb_full_sidebar.clear("No rows match filter.")
 
     def _rb_full_start(self):
         self.rb_cancel = False
@@ -771,6 +820,7 @@ class RecentlyBookedTabMixin:
         with_photos = bool(self.app_settings.get("rb_with_photos", True))
         with_html = bool(self.app_settings.get("rb_with_html", True))
 
+        self._rb_full_all = []
         self._rb_full_records = []
         self.rb_full_tree.delete(*self.rb_full_tree.get_children())
         self.rb_full_sidebar.clear("Scraping…")
@@ -789,6 +839,7 @@ class RecentlyBookedTabMixin:
             import_lock = threading.Lock()
             try:
                 eth = ArrestSearcher(db_path).ethnic_db
+                self._rb_full_eth = eth
                 db = Database(db_path)
                 try:
                     known = db.existing_source_urls()
@@ -812,18 +863,35 @@ class RecentlyBookedTabMixin:
                             )
 
                         def ui() -> None:
-                            self._rb_append_row(
-                                self.rb_full_tree,
-                                self._rb_full_records,
-                                row,
-                                eth=eth,
-                                sidebar=self.rb_full_sidebar,
-                                select_latest=(n == 1),
-                                status_label=self.rb_full_status,
-                                status_fmt=(
-                                    f"{{n}} shown · +{imported} imported · "
-                                    f"{skipped} skipped · {workers}t"
-                                ),
+                            self._rb_full_all.append(row)
+                            visible = (not self.rb_full_hide_no_race) or self._rb_has_race(
+                                row
+                            )
+                            if visible:
+                                self._rb_append_row(
+                                    self.rb_full_tree,
+                                    self._rb_full_records,
+                                    row,
+                                    eth=eth,
+                                    sidebar=self.rb_full_sidebar,
+                                    select_latest=(
+                                        len(self._rb_full_records) == 1
+                                    ),
+                                    status_label=None,
+                                )
+                            shown_n = len(self._rb_full_records)
+                            total_n = len(self._rb_full_all)
+                            filt = (
+                                " · hiding no-race"
+                                if self.rb_full_hide_no_race
+                                else ""
+                            )
+                            self.rb_full_status.configure(
+                                text=(
+                                    f"{shown_n}/{total_n} shown · "
+                                    f"+{imported} imported · {skipped} skipped · "
+                                    f"{workers}t{filt}"
+                                )
                             )
                             if n == 1 or n % 10 == 0:
                                 self.log(
@@ -854,7 +922,7 @@ class RecentlyBookedTabMixin:
 
                 msg = (
                     f"RecentlyBooked full scrape done: "
-                    f"{shown[0]} shown, "
+                    f"{len(self._rb_full_records)}/{len(self._rb_full_all)} shown, "
                     f"+{imported} imported, {skipped} skipped "
                     f"({workers} threads)."
                 )
