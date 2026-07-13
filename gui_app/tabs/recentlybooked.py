@@ -703,7 +703,21 @@ class RecentlyBookedTabMixin:
         def work():
             s = ArrestSearcher(self.db_path)
             persisted = 0
+            dedupe_removed = 0
             try:
+                db = s.db
+                dedupe_result = db.remove_name_dob_photo_duplicates(
+                    dry_run=False,
+                    merge_fields=True,
+                    source_system="recentlybooked",
+                )
+                dedupe_removed = int(dedupe_result.get("deleted") or 0)
+                if dedupe_removed:
+                    self.log(
+                        "RB misclassify dedupe: removed "
+                        f"{dedupe_removed} duplicate row(s) "
+                        f"({dedupe_result.get('groups', 0)} group(s))."
+                    )
                 rows, base = s.analyze_ethnicities(
                     source_system="recentlybooked",
                     return_base_count=True,
@@ -760,7 +774,16 @@ class RecentlyBookedTabMixin:
                 msg = (
                     f"RecentlyBooked surname analysis: "
                     f"{len(rows)} flags from {base} names"
-                    + (f" · {persisted} assumed races carried over." if persisted else ".")
+                    + (
+                        f" · deduped {dedupe_removed} duplicate(s)"
+                        if dedupe_removed
+                        else ""
+                    )
+                    + (
+                        f" · {persisted} assumed races carried over."
+                        if persisted
+                        else "."
+                    )
                 )
                 self.log(msg)
                 self.rb_mc_status.configure(text=msg)
