@@ -69,9 +69,11 @@ _ETHNICITY_COMPATIBLE_RACES = {
 
 _RACE_ALIASES = {
     "W": "WHITE", "CAUCASIAN": "WHITE", "CAUCASION": "WHITE", "WHITE": "WHITE",
+    "WHITE OR CAUCASIAN": "WHITE", "CAUCASIAN OR WHITE": "WHITE",
     "B": "BLACK", "BLACK": "BLACK", "AFRICAN AMERICAN": "BLACK",
     "AFRICAN-AMERICAN": "BLACK", "BLACK OR AFRICAN AMERICAN": "BLACK",
-    "H": "HISPANIC", "LATINO": "HISPANIC", "LATINA": "HISPANIC",
+    "BLACK/AFRICAN AMERICAN": "BLACK", "BLACK AFRICAN AMERICAN": "BLACK",
+    "H": "HISPANIC", "L": "HISPANIC", "LATINO": "HISPANIC", "LATINA": "HISPANIC",
     "LATINX": "HISPANIC", "HISPANIC": "HISPANIC",
     "HISPANIC OR LATINO": "HISPANIC", "LATINO OR HISPANIC": "HISPANIC",
     "HISPANIC/LATINO": "HISPANIC", "LATINO/HISPANIC": "HISPANIC",
@@ -88,7 +90,13 @@ _RACE_ALIASES = {
     "Z": "ASIAN",
     "P": "PACIFIC ISLANDER",
     "I": "NATIVE AMERICAN",
+    "AMERICAN INDIAN": "NATIVE AMERICAN",
+    "AMERICAN INDIAN OR ALASKA": "NATIVE AMERICAN",
+    "AMERICAN INDIAN OR ALASKA NATIVE": "NATIVE AMERICAN",
+    "NATIVE AMERICAN": "NATIVE AMERICAN",
+    "ALASKA NATIVE": "NATIVE AMERICAN",
     "O": "OTHER",
+    "OTHER": "OTHER",
     "X": "UNKNOWN",
     "G": "OTHER",
 }
@@ -113,6 +121,14 @@ def _canonical_race_key(recorded_race: str) -> str:
         return "WHITE HISPANIC"
     if "HISPANIC" in r_spaced or "LATINO" in r_spaced or "LATINA" in r_spaced:
         return "HISPANIC"
+    if (
+        "AMERICAN INDIAN" in r_spaced
+        or "NATIVE AMERICAN" in r_spaced
+        or "ALASKA NATIVE" in r_spaced
+    ):
+        return "NATIVE AMERICAN"
+    if r_spaced.startswith("BLACK") or "AFRICAN AMERICAN" in r_spaced:
+        return "BLACK"
     if r_spaced.startswith("WHITE") or r_spaced.endswith(" WHITE"):
         return "WHITE"
     if r_spaced in ("OTHER", "OTHER RACE", "OTHER RACES", "OT"):
@@ -131,8 +147,7 @@ def _canonical_race_key(recorded_race: str) -> str:
 def format_race_label(recorded_race: str) -> str:
     key = _canonical_race_key(recorded_race)
     if key == "UNKNOWN":
-        raw = (recorded_race or "").strip()
-        return raw if raw else "—"
+        return "Unknown"
     if len(key) <= 2:
         return key
     return key.title().replace("Or", "or").replace("/ ", "/")

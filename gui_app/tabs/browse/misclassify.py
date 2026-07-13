@@ -22,7 +22,7 @@ from gui_app.widgets import (
 )
 from scraper.charge_classifications import category_label
 from scraper.database import Database
-from scraper.searcher import ethnicity_review_verdict
+from scraper.searcher import ethnicity_review_verdict, format_race_label
 
 _BROWSE_COLS = [
     "name",
@@ -136,7 +136,7 @@ class MisclassifyTabMixin:
 
     def _browse_race_choices(self) -> List[str]:
         try:
-            return Database(self.db_path).distinct_races()
+            return Database(self.db_path).distinct_race_labels()
         except Exception:
             return []
 
@@ -166,7 +166,7 @@ class MisclassifyTabMixin:
     def _browse_row_values(self, record: Dict[str, Any]) -> tuple:
         return (
             self._browse_name(record),
-            record.get("race") or "—",
+            format_race_label(record.get("race") or ""),
             record.get("likely_ethnicity") or "—",
             self._browse_review_label(record),
             category_label(record.get("charge_category") or "") or "—",

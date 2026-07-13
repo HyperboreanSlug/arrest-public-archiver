@@ -56,8 +56,36 @@ class QueryMixin:
             q += " AND UPPER(COALESCE(state, '')) = UPPER(?)"
             params.append(state)
         if race and str(race).strip().lower() not in ("", "all", "*"):
-            q += " AND UPPER(COALESCE(race, '')) = UPPER(?)"
-            params.append(str(race).strip())
+            from scraper.searcher import _canonical_race_key
+
+            target = _canonical_race_key(str(race).strip())
+            raw_rows = self._conn.execute(
+                """
+                SELECT DISTINCT race FROM arrests
+                WHERE race IS NOT NULL AND TRIM(race) != ''
+                """
+            ).fetchall()
+            matched = [
+                str(r["race"])
+                for r in raw_rows
+                if r and r["race"] and _canonical_race_key(str(r["race"])) == target
+            ]
+            if target == "UNKNOWN":
+                if matched:
+                    ph = ",".join("?" * len(matched))
+                    q += (
+                        " AND (race IS NULL OR TRIM(race) = '' "
+                        f"OR TRIM(race) IN ({ph}))"
+                    )
+                    params.extend(matched)
+                else:
+                    q += " AND (race IS NULL OR TRIM(race) = '')"
+            elif matched:
+                ph = ",".join("?" * len(matched))
+                q += f" AND TRIM(race) IN ({ph})"
+                params.extend(matched)
+            else:
+                q += " AND 0"
         if likely_ethnicity and str(likely_ethnicity).strip().lower() not in (
             "",
             "all",
@@ -119,6 +147,14 @@ class QueryMixin:
             """
         ).fetchall()
         return [str(r["race"]) for r in rows if r and r["race"]]
+
+    def distinct_race_labels(self) -> List[str]:
+        """Merged display labels (White, Black, …) for filter dropdowns."""
+        from scraper.searcher import format_race_label
+
+        labels = {format_race_label(r) for r in self.distinct_races()}
+        labels.add("Unknown")
+        return sorted(labels, key=lambda s: s.lower())
 
     def distinct_likely_ethnicities(self) -> List[str]:
         rows = self._conn.execute(
