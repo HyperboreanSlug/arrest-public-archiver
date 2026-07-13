@@ -247,7 +247,7 @@ class RecentlyBookedTabMixin:
 
     # ── Live Feed ───────────────────────────────────────────────────────
 
-    _RB_LIVE_POLL_MS = 8000
+    _RB_LIVE_POLL_MS = 60000
 
     @staticmethod
     def _rb_has_race(record: Dict[str, Any]) -> bool:
@@ -1110,12 +1110,31 @@ class RecentlyBookedTabMixin:
                         self.after(0, ui)
                         shown[0] = n
 
+                    import time as _time
+
+                    _prog_t = [0.0]
+
+                    def on_progress(count, _total=None):
+                        # Throttled heartbeat so the bottom log shows the scraper
+                        # is still working even while paging past known bookings.
+                        now = _time.time()
+                        if now - _prog_t[0] < 3.0:
+                            return
+                        _prog_t[0] = now
+                        self.after(
+                            0,
+                            lambda c=count: self.log(
+                                f"RecentlyBooked: working… {c} record(s) fetched"
+                            ),
+                        )
+
                     with RecentlyBookedScraper(delay=delay) as s:
                         kw = dict(
                             with_photos=with_photos,
                             with_html=with_html,
                             skip_existing_urls=known,
                             cancel_check=lambda: self.rb_cancel,
+                            progress_cb=on_progress,
                             record_cb=on_record,
                             workers=workers,
                         )

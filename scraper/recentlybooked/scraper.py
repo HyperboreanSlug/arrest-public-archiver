@@ -174,6 +174,7 @@ class RecentlyBookedScraper:
         workers = max(1, int(workers or 1))
         records: List[Dict[str, Any]] = []
         page = 1
+        prev_page_urls: Optional[frozenset] = None
         while not max_pages or page <= max_pages:
             if self._cancelled(cancel_check):
                 break
@@ -183,6 +184,15 @@ class RecentlyBookedScraper:
             cards = parse_county_cards(self.client.get(page_url))
             if not cards:
                 break
+            # Some listings echo the last valid page for an out-of-range ?p=N.
+            # If this page repeats the previous page's bookings, stop paging
+            # (otherwise we loop forever with no new records — the stall).
+            page_urls = frozenset(str(c.get("source_url") or "") for c in cards)
+            if prev_page_urls is not None and page_urls == prev_page_urls:
+                break
+            prev_page_urls = page_urls
+            # Heartbeat per page so the UI shows progress between record bursts.
+            self._report(progress_cb, len(records))
             fresh: List[Dict[str, Any]] = []
             for card in cards:
                 if self._cancelled(cancel_check):
@@ -192,9 +202,11 @@ class RecentlyBookedScraper:
                     continue
                 known_urls.add(source_url)
                 fresh.append(card)
+            # A whole page of already-known bookings means we've reached
+            # previously-scraped territory (newest come first), so stop rather
+            # than paging indefinitely.
             if not fresh:
-                page += 1
-                continue
+                break
             if workers == 1:
                 for card in fresh:
                     if self._cancelled(cancel_check):
@@ -306,6 +318,7 @@ class RecentlyBookedScraper:
                     with_photos=with_photos,
                     with_html=with_html,
                     cancel_check=cancel_check,
+                    progress_cb=progress_cb,
                     record_cb=forward,
                     workers=1,  # avoid nested pools
                 )
@@ -364,6 +377,7 @@ class RecentlyBookedScraper:
                     with_photos=with_photos,
                     with_html=with_html,
                     cancel_check=cancel_check,
+                    progress_cb=progress_cb,
                     record_cb=_forward,
                     workers=1,
                 )
@@ -430,6 +444,7 @@ class RecentlyBookedScraper:
                     with_photos=with_photos,
                     with_html=with_html,
                     cancel_check=cancel_check,
+                    progress_cb=progress_cb,
                     record_cb=_forward,
                     workers=1,
                 )
