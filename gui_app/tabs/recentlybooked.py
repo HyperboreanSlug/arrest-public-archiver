@@ -443,6 +443,16 @@ class RecentlyBookedTabMixin:
                     for r in self._rb_live_all
                     if r.get("source_url")
                 }
+                # Seed from the DB too so an incremental refresh never re-downloads
+                # detail pages / photos for bookings we already stored.
+                try:
+                    _kdb = Database(self.db_path)
+                    try:
+                        known |= _kdb.existing_source_urls()
+                    finally:
+                        _kdb.close()
+                except Exception:
+                    pass
 
                 from scraper.recentlybooked.client import RecentlyBookedClient
                 from scraper.recentlybooked.live_feed import fetch_live_feed
@@ -530,6 +540,20 @@ class RecentlyBookedTabMixin:
                                             f"loaded · +{imported} imported · "
                                             f"{rejected} no-photo dropped…"
                                         )
+                            try:
+                                dret = db.remove_name_dob_photo_duplicates(
+                                    dry_run=False,
+                                    merge_fields=True,
+                                    source_system="recentlybooked",
+                                )
+                                _removed = int(dret.get("deleted") or 0)
+                                if _removed:
+                                    self.log(
+                                        f"Live feed dedupe: removed {_removed} "
+                                        f"duplicate row(s)."
+                                    )
+                            except Exception as exc:
+                                self.log(f"Live feed dedupe skipped: {exc}")
                         finally:
                             db.close()
 
@@ -1101,6 +1125,20 @@ class RecentlyBookedTabMixin:
                             s.scrape_county(state, county, **kw)
                         else:
                             s.scrape_state(state, **kw)
+                    try:
+                        dret = db.remove_name_dob_photo_duplicates(
+                            dry_run=False,
+                            merge_fields=True,
+                            source_system="recentlybooked",
+                        )
+                        _removed = int(dret.get("deleted") or 0)
+                        if _removed:
+                            self.log(
+                                f"Full scrape dedupe: removed {_removed} "
+                                f"duplicate row(s)."
+                            )
+                    except Exception as exc:
+                        self.log(f"Full scrape dedupe skipped: {exc}")
                 finally:
                     db.close()
 
