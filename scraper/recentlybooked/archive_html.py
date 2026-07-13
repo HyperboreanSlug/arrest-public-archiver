@@ -20,6 +20,8 @@ def archive_html(
     if not state or not county or not slug:
         return None
     destination = Path(output_root) / state / county / f"{slug}.html"
+    if destination.is_file() and destination.stat().st_size > 0:
+        return destination
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(html, encoding="utf-8")
     return destination
