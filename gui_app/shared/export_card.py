@@ -274,7 +274,7 @@ def _draw_seal_watermark(
     *,
     photo_box: Tuple[int, int, int, int],
     text: str = _WATERMARK,
-    opacity: float = 0.20,
+    opacity: float = 0.35,
 ) -> None:
     """Center the Department seal on the mugshot with handle text beneath it."""
     overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
@@ -318,8 +318,8 @@ def render_export_card(record: Mapping[str, Any]) -> Image.Image:
     mug = _load_mugshot(record, photo_box).convert("RGBA")
     canvas.paste(mug, (margin, margin), mug if mug.mode == "RGBA" else None)
 
-    # Seal + @handle watermark on the mugshot at 20% opacity
-    _draw_seal_watermark(canvas, photo_box=photo_rect, opacity=0.20)
+    # Seal + @handle watermark on the mugshot at 35% opacity
+    _draw_seal_watermark(canvas, photo_box=photo_rect, opacity=0.35)
 
     # Accent bar under photo
     bar_y = margin + _PHOTO_H + 18
