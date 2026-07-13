@@ -106,6 +106,8 @@ def _canonical_race_key(recorded_race: str) -> str:
     raw = (recorded_race or "").strip()
     if not raw or raw.upper() in ("N/A", "NA"):
         return "UNKNOWN"
+    if raw.isdigit():
+        return "UNKNOWN"
     r = " ".join(raw.upper().replace("_", " ").replace("-", " ").split())
     r = r.replace(" / ", "/").replace("/ ", "/").replace(" /", "/")
     r_spaced = " ".join(r.replace("/", " ").split())
