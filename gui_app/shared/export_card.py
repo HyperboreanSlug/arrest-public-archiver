@@ -12,6 +12,9 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 from scraper.searcher import format_race_label
 
 _WATERMARK = "@DoDeportations"
+_SEAL_PATH = (
+    Path(__file__).resolve().parents[2] / "assets" / "department_of_deportations_seal.png"
+)
 _CARD_W = 1080
 _CARD_H = 1350
 _PHOTO_H = 820
@@ -191,24 +194,50 @@ def _wrap_text(
     return lines
 
 
-def _draw_diagonal_watermark(canvas: Image.Image, text: str = _WATERMARK) -> None:
-    """Large diagonal mark at ~5% opacity across the whole card."""
+def _with_opacity(img: Image.Image, opacity: float) -> Image.Image:
+    """Multiply existing alpha by *opacity* (0..1)."""
+    rgba = img.convert("RGBA")
+    r, g, b, a = rgba.split()
+    factor = max(0.0, min(1.0, float(opacity)))
+    a = a.point(lambda p: int(round(p * factor)))
+    out = Image.merge("RGBA", (r, g, b, a))
+    return out
+
+
+def _draw_seal_watermark(
+    canvas: Image.Image,
+    *,
+    photo_box: Tuple[int, int, int, int],
+    text: str = _WATERMARK,
+    opacity: float = 0.10,
+) -> None:
+    """Center the Department seal on the mugshot with handle text beneath it."""
     overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-    # Oversized layer so rotation still covers corners.
-    layer_w, layer_h = canvas.size[0] * 2, canvas.size[1] * 2
-    layer = Image.new("RGBA", (layer_w, layer_h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(layer)
-    font = _load_font(max(72, canvas.size[0] // 6), bold=True)
-    alpha = max(1, int(round(255 * 0.05)))  # 5% opacity
+    left, top, right, bottom = photo_box
+    photo_w = max(1, right - left)
+    photo_h = max(1, bottom - top)
+
+    if _SEAL_PATH.is_file():
+        seal = Image.open(_SEAL_PATH).convert("RGBA")
+        # Cover most of the mugshot while leaving room for text under the seal.
+        target = int(min(photo_w, photo_h) * 0.78)
+        seal = seal.resize((target, target), Image.Resampling.LANCZOS)
+        seal = _with_opacity(seal, opacity)
+        seal_x = left + (photo_w - target) // 2
+        seal_y = top + max(8, int(photo_h * 0.08))
+        overlay.paste(seal, (seal_x, seal_y), seal)
+        text_top = seal_y + target + 12
+    else:
+        text_top = top + photo_h // 2
+
+    draw = ImageDraw.Draw(overlay)
+    font = _load_font(max(36, photo_w // 14), bold=True)
+    alpha = max(1, int(round(255 * opacity)))
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    x = (layer_w - tw) // 2
-    y = (layer_h - th) // 2
-    draw.text((x, y), text, font=font, fill=(255, 255, 255, alpha))
-    rotated = layer.rotate(32, resample=Image.Resampling.BICUBIC, expand=True)
-    rx = (canvas.size[0] - rotated.size[0]) // 2
-    ry = (canvas.size[1] - rotated.size[1]) // 2
-    overlay.paste(rotated, (rx, ry), rotated)
+    tx = left + (photo_w - tw) // 2
+    ty = min(bottom - th - 16, text_top)
+    draw.text((tx, ty), text, font=font, fill=(255, 255, 255, alpha))
     canvas.alpha_composite(overlay)
 
 
@@ -220,8 +249,12 @@ def render_export_card(record: Mapping[str, Any]) -> Image.Image:
     # Photo panel
     margin = 48
     photo_box = (_CARD_W - margin * 2, _PHOTO_H)
+    photo_rect = (margin, margin, margin + photo_box[0], margin + photo_box[1])
     mug = _load_mugshot(record, photo_box).convert("RGBA")
     canvas.paste(mug, (margin, margin), mug if mug.mode == "RGBA" else None)
+
+    # Seal + @handle watermark on the mugshot at 10% opacity
+    _draw_seal_watermark(canvas, photo_box=photo_rect, opacity=0.10)
 
     # Accent bar under photo
     bar_y = margin + _PHOTO_H + 18
@@ -239,7 +272,6 @@ def render_export_card(record: Mapping[str, Any]) -> Image.Image:
     name_font = _load_font(54, bold=True)
     label_font = _load_font(26)
     value_font = _load_font(34, bold=True)
-    small_font = _load_font(22)
 
     y = bar_y + 28
     max_text_w = _CARD_W - margin * 2
@@ -259,9 +291,6 @@ def render_export_card(record: Mapping[str, Any]) -> Image.Image:
     y = section("Race marked", race, y + 8)
     y = section("Arrest location", location, y)
     y = section("Crime", crime, y)
-
-    # Full-bleed diagonal watermark at 5% opacity
-    _draw_diagonal_watermark(canvas, _WATERMARK)
 
     # Bottom-right handle at 100% opacity
     handle = _WATERMARK
