@@ -15,7 +15,10 @@ def show_arrest_drawer(parent, record):
         if v in (None,""):
             continue
         if k=="charge_description":
-            v=expand_charge_text(str(v)) or v
+            cleaned=expand_charge_text(str(v))
+            if not cleaned:
+                continue
+            v=cleaned
         lines.append(f"{k}: {v}")
     text.insert("end","\n".join(lines));text.configure(state="disabled")
     row=ctk.CTkFrame(win,fg_color="transparent");row.pack(fill="x",padx=10,pady=(0,10))

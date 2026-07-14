@@ -23,6 +23,8 @@ from scraper.mugshot_ethnicity.photo_quality_heuristics import (
     geometry_reason,
     heuristic_crimewatch_stock,
     heuristic_crimewatch_stock_from_rgb,
+    heuristic_gray_placeholder,
+    heuristic_gray_placeholder_from_rgb,
     heuristic_silhouette,
     image_dims,
     rgb_arrays_from_image,
@@ -58,6 +60,8 @@ def _classify_cached(resolved: str, mtime_ns: int, size: int) -> Optional[str]:
         return "site chrome (known non-mugshot)"
     if heuristic_crimewatch_stock(path):
         return "CrimeWatch / stock ARREST placeholder (not a mugshot)"
+    if heuristic_gray_placeholder(path):
+        return "gray photo-not-available placeholder (not a mugshot)"
     if heuristic_silhouette(path):
         return "registry silhouette placeholder (white bg + outline)"
     dims = image_dims(path)
@@ -108,7 +112,7 @@ def bytes_non_mugshot_reason(data: bytes, *, url: str = "", ext: str = "") -> Op
         return "registry silhouette placeholder (known stub)"
     if digest in KNOWN_CHROME_MD5:
         return "site chrome (known non-mugshot)"
-    if url_looks_like_chrome(url):
+    if url and url_looks_like_chrome(url):
         return "chrome URL pattern"
     e = (ext or "").lower()
     if not e:
@@ -136,6 +140,8 @@ def bytes_non_mugshot_reason(data: bytes, *, url: str = "", ext: str = "") -> Op
                 arr = rgb_arrays_from_image(im)
                 if arr is not None and heuristic_crimewatch_stock_from_rgb(arr):
                     return "CrimeWatch / stock ARREST placeholder (not a mugshot)"
+                if arr is not None and heuristic_gray_placeholder_from_rgb(arr):
+                    return "gray photo-not-available placeholder (not a mugshot)"
         except Exception:
             pass
     if _STUB_SIZE_MIN <= len(data) <= _STUB_SIZE_MAX:

@@ -18,14 +18,13 @@ _SUMMARY_RULES_B: List[Tuple[str, List[str]]] = [
     ),
     (
         "RESISTING ARREST",
-        [r"\bresist(ing)?\s+(arrest|officer)", r"\bobstruct(ing)?\s+(officer|police)"],
+        [
+            r"\bresist(ing)?\s+(arrest|officer)",
+            r"\bresist(ing)?\s+officer\s+without\s+violence",
+            r"\bobstruct(ing)?\s+(officer|police)",
+        ],
     ),
-    # --- Weapons ---
-    (
-        "WEAPONS OFFENSE",
-        [r"\bfirearm", r"\bhandgun\b", r"\brifle\b", r"\bshotgun\b", r"\bweapon", r"\bconcealed\s+carry", r"\bammunition\b", r"\bbrandish", r"\bdeadly\s+weapon", r"\bexplosive"],
-    ),
-    # --- Drugs ---
+    # --- Drugs before weapons so "cannabis with a weapon" is still marijuana ---
     (
         "DRUG TRAFFICKING / DISTRIBUTION",
         [r"\bdrug\s+traffick", r"\btraffick.*drug", r"\bintent\s+to\s+(distrib|deliver|sell)", r"\bdelivery\s+of\b", r"\bpwid\b", r"\bmanufacture.*controlled"],
@@ -46,7 +45,7 @@ _SUMMARY_RULES_B: List[Tuple[str, List[str]]] = [
         "POSSESSION OF CONTROLLED SUBSTANCE",
         [r"\bcontroll?ed\s+substance", r"\bpossession\s+of\s+controlled", r"\bunlawful\s+possession\s+controlled", r"\bposs(ession)?\s+of\s+dangerous\s+drugs", r"\bpossession\s+of\s+a\s+controlled", r"\bposs\s+cs\b", r"\bposs(ess|ession)?/?receive\s+cont", r"\bcocaine\b", r"\bheroin\b", r"\bfentanyl\b", r"\bnarcotic", r"\bcds\b", r"\b13a-12-212\b", r"\bdangerous\s+drugs\b"],
     ),
-    # --- Theft / property ---
+    # --- Theft before weapons so "grand theft … firearm" is theft ---
     (
         "BURGLARY / B&E",
         [r"\bburglar", r"\bb\s*&\s*e\b", r"\bbreaking\s+and\s+enter", r"\bhome\s+invasion", r"\bunlawful\s+entry"],
@@ -54,6 +53,11 @@ _SUMMARY_RULES_B: List[Tuple[str, List[str]]] = [
     (
         "THEFT / LARCENY",
         [r"\btheft\s+of\s+property", r"\bgrand\s+theft", r"\bpetit\s+theft", r"\bpetty\s+theft", r"\btheft\b", r"\blarceny\b", r"\bshoplift", r"\bstolen\s+propert", r"\breceiv(ing|ed)\s+stolen", r"\bmotor\s+vehicle\s+theft", r"\bauto\s+theft", r"\bunlawful\s+taking"],
+    ),
+    # --- Weapons ---
+    (
+        "WEAPONS OFFENSE",
+        [r"\bfirearm", r"\bhandgun\b", r"\brifle\b", r"\bshotgun\b", r"\bweapon", r"\bconcealed\s+carry", r"\bammunition\b", r"\bbrandish", r"\bdeadly\s+weapon", r"\bexplosive"],
     ),
     (
         "CRIMINAL TRESPASS",
@@ -78,8 +82,25 @@ _SUMMARY_RULES_B: List[Tuple[str, List[str]]] = [
         [r"\bbench\s+warrant", r"\balias\s+writ", r"\bwarrant\b", r"\b15-10-60\b", r"\bpublic\s+order\s+crimes-?aw"],
     ),
     (
+        "FAILURE TO IDENTIFY",
+        [
+            r"\bfail(ure)?\s+to\s+id\b",
+            r"\bfail(ure)?\s+to\s+identify",
+            r"\bfail\s+to\s+id\s+fugitive",
+            r"\brefuse\s+to\s+give\b",
+        ],
+    ),
+    (
+        "ORGANIZED CRIMINAL ACTIVITY",
+        [
+            r"\borganized\s+criminal\s+activity",
+            r"\bengaging\s+in\s+organized",
+            r"\beoca\b",
+        ],
+    ),
+    (
         "FUGITIVE FROM JUSTICE",
-        [r"\bfugitive\b", r"\bfugitive\s+from\s+justice"],
+        [r"\bfugitive\s+from\s+justice", r"\bfugitive\b"],
     ),
     (
         "CONTEMPT OF COURT",

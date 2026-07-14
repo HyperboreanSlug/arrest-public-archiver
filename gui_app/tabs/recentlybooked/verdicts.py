@@ -3,43 +3,22 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from gui_app.shared.record_sidebar import (
-    RecordSidebar,
-    merge_ethnicity_review_flags,
-)
+from gui_app.shared.record_sidebar import RecordSidebar
+from gui_app.shared.verdict_persist import persist_ethnicity_verdict
 from gui_app.widgets import (
     tree_iid_for_record,
     tree_row_forget,
     tree_row_record,
 )
-from scraper.database import Database
 
 
 class RbVerdictsMixin:
     def _rb_persist_verdict(self, record: Dict[str, Any], verdict: str) -> bool:
         """Write ethnicity_review into flags; resolve id via source_url when needed."""
-        flags_json = merge_ethnicity_review_flags(record.get("flags"), verdict)
-        record["flags"] = flags_json
-        rid = record.get("id")
-        source_url = str(record.get("source_url") or "").strip()
-        db = Database(self.db_path)
-        try:
-            if rid is None and source_url:
-                row = db._conn.execute(
-                    "SELECT id, flags FROM arrests WHERE source_url = ? LIMIT 1",
-                    (source_url,),
-                ).fetchone()
-                if row:
-                    rid = row["id"] if hasattr(row, "keys") else row[0]
-                    existing = row["flags"] if hasattr(row, "keys") else row[1]
-                    flags_json = merge_ethnicity_review_flags(existing, verdict)
-                    record["flags"] = flags_json
-            if rid is None:
-                return False
-            record["id"] = int(rid)
-            return bool(db.update_arrest(int(rid), {"flags": flags_json}))
-        finally:
-            db.close()
+        ok, _flags, err = persist_ethnicity_verdict(self.db_path, record, verdict)
+        if not ok and err:
+            self.log(f"RB verification save failed: {err}")
+        return ok
 
     def _rb_apply_verdict(
         self,

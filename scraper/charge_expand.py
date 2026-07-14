@@ -1,14 +1,10 @@
-"""Expand jail booking abbreviations into full plain-language charges.
-
-Used for details/card display (no acronyms). Summarization runs after expand.
-"""
+"""Expand jail booking abbreviations into full plain-language charges."""
 from __future__ import annotations
 
 import re
 from typing import Any, List, Tuple
 
-# Multi-token phrases first (longest / most specific wins).
-_PHRASES: List[Tuple[str, str]] = [
+_PHRASES: List[Tuple[str, str]] = [  # longest / most specific first
     (r"\bASSLT\s+CBI\s+FV\b", "Assault Causes Bodily Injury Family Violence"),
     (r"\bASSLT\s+CBI\b", "Assault Causes Bodily Injury"),
     (r"\bAGG\s+ASSLT\b", "Aggravated Assault"),
@@ -33,6 +29,18 @@ _PHRASES: List[Tuple[str, str]] = [
     (r"\bVIOL\s+BOND/?PROTECT(?:IVE)?\s+ORDER\b", "Violation of Bond or Protective Order"),
     (r"\bDRIVING\s+WHILE\s+INTOXICATED\b", "Driving While Intoxicated"),
     (r"\bFAILURE\s+TO\s+APPEAR\b", "Failure to Appear"),
+    (r"\bEVADING\s+ARREST(?:\s+(?:OR\s+)?DET(?:ENTION)?)?(?:\s+W/?\s*VEH(?:ICLE)?)?\b", "Evading Arrest"),
+    (r"\bFAIL(?:URE)?\s+TO\s+ID(?:ENTIFY)?\b", "Failure to Identify"),
+    (r"\bFUGITIVE\s+FRM\s+JUSTICE\b", "Fugitive from Justice"),
+    (r"\bENGAGING\s+IN\s+ORGANIZED\s+CRIMINAL\s+ACTIVITY\b", "Engaging in Organized Criminal Activity"),
+    (r"\bMTR\s+(?=ENGAGING|EVADING|FAIL|POSS|ASSAULT|THEFT)", ""),
+    (r"\bOPER(?:ATING)?\s+(?:MTR\s+)?(?:MV|VEH(?:ICLE|ICAL)?)\s+U/?INFL(?:UENCE)?(?:\s+(?:OF\s+)?ALC(?:OHOL)?)?", "Operating Motor Vehicle Under the Influence of Alcohol"),
+    (r"\bU/?INFL(?:UENCE)?(?:\s+ALC(?:OHOL)?)?\b", "Under the Influence of Alcohol"),
+    (r"\bNO\s+OPERATOR'?S?(?:/MOPED)?\s+LICENSE\b", "No Operator License"),
+    (r"\bFLEE/?ELUDE\b", "Flee or Elude"),
+    (r"\bRESISTING\s+OFFICER\s+WITHOUT\s+VIOLENCE\b", "Resisting Officer Without Violence"),
+    (r"\bPOSS\.?\s+OF\s+WEAPON\s+IN\s+COMMISSION\s+OF\s+FELONY\b", "Possession of Weapon in Commission of Felony"),
+    (r"\bGRAND\s+THEFT\s+3RD\s+DEGREE[-\s]?FIREARM\b", "Grand Theft Firearm"),
 ]
 
 # Whole-token map (applied after phrases). Keys are uppercase.
@@ -49,6 +57,7 @@ _TOKENS = {
     "MARIJ": "Marijuana",
     "MARIJUANA": "Marijuana",
     "FTA": "Failure to Appear",
+    "FRM": "From",
     "DWI": "Driving While Intoxicated",
     "DUI": "Driving Under the Influence",
     "OWI": "Operating While Intoxicated",
@@ -100,6 +109,7 @@ _TOKENS = {
     "BOND": "Bond",
     "ORDER": "Order",
     "COURT": "Court",
+    "WARR": "Warrant",
     "WARRANT": "Warrant",
     "BENCH": "Bench",
     "FUGITIVE": "Fugitive",
@@ -147,41 +157,44 @@ def _expand_segment(segment: str) -> str:
             parts.append(tok.title() if len(tok) > 1 else tok.upper())
         else:
             parts.append(tok if not tok.isalpha() else tok.title())
-    # Collapse multi-word token expansions that re-introduce doubles
-    out = " ".join(parts)
-    out = re.sub(r"\s+", " ", out).strip(" ,.;:-")
-    # Fix "With With" style after W/ phrases + token maps
+    out = re.sub(r"\s+", " ", " ".join(parts)).strip(" ,.;:-")
     out = re.sub(r"\b(With)\s+\1\b", r"\1", out, flags=re.IGNORECASE)
     return (class_note + out).strip()
 
 
 def expand_charge_text(text: str) -> str:
     """Expand abbreviations in raw charge text; keep multi-charge separators."""
-    raw = " ".join((text or "").replace("\u00a0", " ").split())
-    if not raw:
+    from scraper.charge_sanitize import is_non_charge, sanitize_charge_text
+
+    raw = sanitize_charge_text(" ".join((text or "").replace("\u00a0", " ").split()))
+    if not raw or is_non_charge(raw):
         return ""
-    segs = [p for p in _SPLIT.split(raw) if p and p.strip()]
-    if not segs:
-        return _expand_segment(raw)
-    expanded = [_expand_segment(p) for p in segs]
-    expanded = [e for e in expanded if e]
+    segs = [p for p in _SPLIT.split(raw) if p and p.strip()] or [raw]
+    expanded = [e for e in (_expand_segment(p) for p in segs) if e and not is_non_charge(e)]
     return "; ".join(expanded)
 
 
 def expand_charge(record_or_text: Any) -> str:
     """Full plain-language charge for details and export cards."""
+    from scraper.charge_recover import recover_charge_from_record
+
     if record_or_text is None:
         return "—"
     if isinstance(record_or_text, dict):
         parts = [
-            record_or_text.get("charge_description"),
-            record_or_text.get("charge_group"),
-            record_or_text.get("offense"),
-            record_or_text.get("offense_description"),
-            record_or_text.get("statute"),
+            record_or_text.get(k)
+            for k in (
+                "charge_description",
+                "charge_group",
+                "offense",
+                "offense_description",
+                "statute",
+            )
         ]
         blob = " | ".join(str(p) for p in parts if p and str(p).strip())
-    else:
-        blob = str(record_or_text)
-    out = expand_charge_text(blob)
-    return out or "—"
+        out = expand_charge_text(blob)
+        if out:
+            return out
+        recovered = recover_charge_from_record(record_or_text)
+        return expand_charge_text(recovered) if recovered else "—"
+    return expand_charge_text(str(record_or_text)) or "—"

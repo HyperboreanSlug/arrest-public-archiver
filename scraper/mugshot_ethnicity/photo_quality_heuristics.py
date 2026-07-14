@@ -51,6 +51,45 @@ def heuristic_silhouette(path: Path) -> bool:
         return False
 
 
+def heuristic_gray_placeholder_from_rgb(arr) -> bool:
+    """True for nearly uniform mid-gray 'photo not available' tiles."""
+    try:
+        import numpy as np
+
+        a = np.asarray(arr, dtype=np.float32)
+        if a.ndim != 3 or a.shape[2] < 3:
+            return False
+        r, g, b = a[:, :, 0], a[:, :, 1], a[:, :, 2]
+        if float(np.mean(np.abs(r - g))) > 8.0 or float(np.mean(np.abs(g - b))) > 8.0:
+            return False
+        gray = (r + g + b) / 3.0
+        mean, std = float(np.mean(gray)), float(np.std(gray))
+        if not (175.0 <= mean <= 235.0) or std > 28.0:
+            return False
+        n = float(gray.size) or 1.0
+        return float(((gray >= 170) & (gray <= 245)).sum()) / n >= 0.90
+    except Exception:
+        return False
+
+
+def heuristic_gray_placeholder(path: Path) -> bool:
+    """True if on-disk image is a gray no-photo placeholder tile."""
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return False
+    if size < _STUB_SIZE_MIN or size > _STUB_SIZE_MAX:
+        return False
+    try:
+        from PIL import Image
+
+        with Image.open(path) as im:
+            arr = rgb_arrays_from_image(im)
+            return bool(arr is not None and heuristic_gray_placeholder_from_rgb(arr))
+    except Exception:
+        return False
+
+
 def rgb_arrays_from_image(im) -> Optional[Any]:
     try:
         import numpy as np

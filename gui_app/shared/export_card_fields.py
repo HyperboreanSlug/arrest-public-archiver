@@ -13,7 +13,10 @@ _SEAL_PATH = (
 )
 _CARD_W = 1080
 _CARD_H = 1350
-_PHOTO_H = 820
+# Slightly shorter mug so multi-charge summaries fit below.
+_PHOTO_H = 700
+_PHOTO_H_MIN = 560
+_PHOTO_TOP = 32
 _BG = (12, 12, 14, 255)
 _PANEL = (26, 26, 32, 255)
 _TEXT = (236, 236, 241, 255)
@@ -102,14 +105,61 @@ def location(record: Mapping[str, Any]) -> str:
     return ", ".join(bits) or "Unknown location"
 
 
-def crime(record: Mapping[str, Any]) -> str:
+def crime(record: Mapping[str, Any], *, max_labels: int = 5) -> str:
+    """Short charge line for export cards (summarized when possible)."""
     from scraper.charge_expand import expand_charge
+    from scraper.charge_summary import summarize_charge
 
+    summary = summarize_charge(record)
+    if summary and summary != "—":
+        return _card_charge_text(_limit_charge_labels(summary, max_labels))
     full = expand_charge(record)
     if full and full != "—":
-        return full
+        return _card_charge_text(_limit_charge_labels(full, max_labels))
     cat = str(record.get("charge_category") or "").strip()
     return cat.replace("_", " ").title() if cat else "Unknown charge"
+
+
+def _limit_charge_labels(text: str, max_labels: int) -> str:
+    """Keep the first N semicolon-separated labels so cards stay readable."""
+    if max_labels <= 0:
+        return text
+    parts = [p.strip() for p in str(text or "").split(";") if p.strip()]
+    if len(parts) <= max_labels:
+        return "; ".join(parts)
+    return "; ".join(parts[:max_labels]) + "; …"
+
+
+_CARD_ACRONYMS = {
+    "Dui": "DUI",
+    "Dwi": "DWI",
+    "Owi": "OWI",
+    "Ovi": "OVI",
+    "Fta": "FTA",
+    "Ice": "ICE",
+    "Id": "ID",
+    "Mv": "MV",
+}
+
+
+def _card_charge_text(text: str) -> str:
+    """Title-case ALL-CAPS summary labels for readable card layout."""
+    import re
+
+    parts: list[str] = []
+    for raw in str(text or "").split(";"):
+        s = " ".join(raw.split()).strip()
+        if not s:
+            continue
+        if s.isupper() and any(c.isalpha() for c in s):
+            s = s.title()
+            s = re.sub(
+                r"\b(" + "|".join(_CARD_ACRONYMS.keys()) + r")\b",
+                lambda m: _CARD_ACRONYMS.get(m.group(1), m.group(1)),
+                s,
+            )
+        parts.append(s)
+    return "; ".join(parts) if parts else str(text or "").strip()
 
 
 def arrest_datetime(record: Mapping[str, Any]) -> str:

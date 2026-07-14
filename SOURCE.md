@@ -88,6 +88,7 @@ tests/                         # Smoke suite split under tests/smoke/
 | `record_sidebar_photo.py` | Resolve path, async photo load |
 | `record_sidebar_actions.py` | Open URL/HTML, export card, detail text |
 | `record_sidebar_flags.py` | Merge `ethnicity_review` / `race_manual` into `flags` JSON |
+| `verdict_persist.py` | Save + verify ethnicity_review flags to DB |
 | `export_card.py` | Public API: `render_export_card`, `export_record_card_to_desktop` |
 | `export_card_fields.py` | Name/location/crime/date extractors, fonts |
 | `export_card_photo.py` | Mugshot load, seal watermark prep |
@@ -100,8 +101,11 @@ tests/                         # Smoke suite split under tests/smoke/
 |--------|----------|
 | `__init__.py` | `BrowseTabMixin` + sub-view registration |
 | `misclassify.py` | Public `MisclassifyTabMixin` composition |
-| `misclassify_build.py` | Filters UI (stated race, actual race, classification) |
-| `misclassify_actions.py` | Refresh, verdict save, actual-race save |
+| `misclassify_constants.py` | Column labels + verification filter maps |
+| `misclassify_suspect.py` | Filter rows to surname-vs-race misclass suspects |
+| `misclassify_verdict.py` | Persist verification; correct → actual=stated race |
+| `misclassify_build.py` | Filters UI (stated race, actual race, verification) |
+| `misclassify_actions.py` | Refresh, verification save, actual-race save |
 | `misclassify_export.py` | CSV export, row drop after filter change |
 | `search.py` | Name/state/race/charge search UI |
 | `statistics.py` | Archive stats charts |
@@ -188,6 +192,10 @@ tests/                         # Smoke suite split under tests/smoke/
 | `charge_classifications.py` | Public charge classify API |
 | `charge_rules.py` | Regex/category tables for charges |
 | `charge_expand.py` | Expand jail abbreviations → full plain-language charges (details/card) |
+| `charge_sanitize.py` | Reject non-charges (state names, bare case numbers); pick code/desc |
+| `charge_sanitize_data.py` | State-name set and jail charge-code labels |
+| `charge_chrome.py` | Strip mugshots.com charges-table UI chrome; extract real offenses |
+| `charge_recover.py` | Recover offense text from raw_json when charge is a stub |
 | `charge_summary.py` | Standardized short labels for tables (expand then match) |
 | `charge_summary_rules.py` | Compile summary rule tables |
 | `charge_summary_rules_a.py` | Summary patterns (immigration through violent) |
@@ -290,6 +298,7 @@ tests/                         # Smoke suite split under tests/smoke/
 | `catalog.py` | US-States / county discovery |
 | `parse.py` | Re-export parsers |
 | `parse_detail.py` | Biographic detail page |
+| `parse_charges.py` | Offense/charge extraction (never state names) |
 | `parse_cards.py` | Listing + live cards |
 | `photos.py` | Photo download to `data/photos/mugshotscom/` |
 | `locked_set.py` | Thread-safe URL set |

@@ -69,20 +69,43 @@ def load_sidebar_photo(
             from PIL import Image
 
             data: Optional[bytes] = None
-            if path and path.is_file():
-                data = path.read_bytes()
-            elif url:
-                resp = requests.get(
-                    url,
-                    timeout=25,
-                    headers={
-                        "User-Agent": USER_AGENT,
-                        "Accept": "image/webp,image/*,*/*;q=0.8",
-                        "Referer": "https://recentlybooked.com/",
-                    },
+            try:
+                from scraper.mugshot_ethnicity.photo_quality import (
+                    bytes_non_mugshot_reason,
+                    is_placeholder_photo,
+                    is_placeholder_photo_url,
                 )
-                resp.raise_for_status()
-                data = resp.content
+            except Exception:
+                bytes_non_mugshot_reason = None  # type: ignore
+                is_placeholder_photo = None  # type: ignore
+                is_placeholder_photo_url = None  # type: ignore
+
+            if path and path.is_file():
+                if is_placeholder_photo and is_placeholder_photo(path):
+                    data = None
+                    message = "No photo"
+                else:
+                    data = path.read_bytes()
+            if data is None and url:
+                if is_placeholder_photo_url and is_placeholder_photo_url(url):
+                    message = "No photo"
+                else:
+                    resp = requests.get(
+                        url,
+                        timeout=25,
+                        headers={
+                            "User-Agent": USER_AGENT,
+                            "Accept": "image/webp,image/*,*/*;q=0.8",
+                            "Referer": "https://recentlybooked.com/",
+                        },
+                    )
+                    resp.raise_for_status()
+                    data = resp.content
+                    if bytes_non_mugshot_reason and bytes_non_mugshot_reason(
+                        data, url=url
+                    ):
+                        data = None
+                        message = "No photo"
             if data:
                 img = Image.open(io.BytesIO(data))
                 if getattr(img, "n_frames", 1) > 1:

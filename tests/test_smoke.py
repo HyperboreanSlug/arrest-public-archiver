@@ -14,6 +14,7 @@ import unittest
 from tests.smoke._path import ROOT  # noqa: F401
 
 from tests.smoke.charge_filter import ChargeFilterTests  # noqa: F401
+from tests.smoke.charge_sanitize import ChargeSanitizeTests  # noqa: F401
 from tests.smoke.database_core import DatabaseCoreTests  # noqa: F401
 from tests.smoke.misclass_analyze import MisclassAnalyzeTests  # noqa: F401
 from tests.smoke.normalize import NormalizeTests  # noqa: F401
@@ -26,6 +27,7 @@ __all__ = [
     "DatabaseCoreTests",
     "MisclassAnalyzeTests",
     "ChargeFilterTests",
+    "ChargeSanitizeTests",
     "RecentlyBookedParseTests",
     "PhotoQualityTests",
     "SchemaV3Tests",

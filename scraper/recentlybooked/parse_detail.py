@@ -71,22 +71,34 @@ def _detail_pairs(soup: BeautifulSoup) -> Dict[str, str]:
     return values
 
 
-def _parse_charges(soup: BeautifulSoup) -> Optional[str]:
+def _parse_charge_items(soup: BeautifulSoup) -> tuple[Optional[str], Optional[str]]:
+    """Return ``(charge_description, case_number)`` from charge-list items."""
+    from scraper.charge_sanitize import pick_charge
+
     charges: List[str] = []
+    case_numbers: List[str] = []
     for item in soup.select(".charges .charge-list li, .charge-list li"):
         text = item.get_text(" ", strip=True)
-        match = re.search(
+        code_m = re.search(
+            r"Charge Code:\s*(.+?)(?:\s+Charge Description:|\s+Bond:|\s*$)",
+            text,
+            flags=re.IGNORECASE,
+        )
+        desc_m = re.search(
             r"Charge Description:\s*(.+?)(?:\s+Bond:|\s*$)",
             text,
             flags=re.IGNORECASE,
         )
-        if match:
-            charge = " ".join(match.group(1).split())
-            if charge:
-                charges.append(charge)
-    if charges:
-        return "; ".join(charges)
-    return None
+        code = " ".join((code_m.group(1) if code_m else "").split()) or None
+        desc = " ".join((desc_m.group(1) if desc_m else "").split()) or None
+        charge, case_no = pick_charge(code, desc)
+        if charge:
+            charges.append(charge)
+        if case_no:
+            case_numbers.append(case_no)
+    charge_out = "; ".join(dict.fromkeys(charges)) if charges else None
+    case_out = "; ".join(dict.fromkeys(case_numbers)) if case_numbers else None
+    return charge_out, case_out
 
 
 def parse_detail(html: str, source_url: str) -> Dict[str, Any]:
@@ -113,9 +125,11 @@ def parse_detail(html: str, source_url: str) -> Dict[str, Any]:
     name = _text(soup.select_one(".mugshot-name, .mugshot-title, h1"))
     record.update(_name_parts(name))
     record.update(_detail_pairs(soup))
-    charges = _parse_charges(soup)
+    charges, case_number = _parse_charge_items(soup)
     if charges:
         record["charge_description"] = charges
+    if case_number:
+        record["case_number"] = case_number
     image = soup.select_one(
         "img.mugshot-image[src], .mugshot-detail img[src], .hero-image img[src]"
     )

@@ -15,6 +15,8 @@ KNOWN_PLACEHOLDER_MD5: Set[str] = {
     "2344828d8440248c173c9d47c1eb13b0",  # RecentlyBooked "no photo" silhouette (303×250)
     # CrimeWatch / RecentlyBooked stock "ARREST" handcuffs tile (250×250 webp)
     "8558ffafb796af4dacd58e85145b3138",
+    # mugshots.com gray "photo not available" tile (400×507 JPEG, ~8.9 KB)
+    "acca619e6684d7ff5e7ad8d8a79ca6f3",
 }
 
 # Known site-chrome / stub hashes from archive audits (not real faces).
@@ -64,6 +66,9 @@ def url_looks_like_chrome(url: str) -> bool:
     if low.startswith("data:"):
         return True
     if "mugshot-placeholder" in low:
+        return True
+    # mugshots.com sometimes serves a generic gray "not available" tile
+    if "photo-not-available" in low or "nophoto" in low or "no-photo" in low:
         return True
     if "crimewatch" in low and any(
         k in low for k in ("placeholder", "default", "stock", "arrest", "no-photo", "nophoto")

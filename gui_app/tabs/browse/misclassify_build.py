@@ -5,7 +5,16 @@ from typing import Any, Dict, List, Optional
 
 import customtkinter as ctk
 
-from gui_app.shared.record_sidebar import ACTUAL_RACE_OPTIONS, RecordSidebar
+from gui_app.shared.record_sidebar import RecordSidebar
+from gui_app.tabs.browse.misclassify_constants import (
+    BROWSE_ACTUAL_RACES,
+    BROWSE_COLS,
+    BROWSE_LABELS,
+    VERIFICATION_FILTERS,
+    bucket_actual_race,
+    verification_label,
+    verification_query,
+)
 from gui_app.theme import C, FONT_SM
 from gui_app.widgets import (
     _enable_tree_column_sort,
@@ -16,22 +25,7 @@ from gui_app.widgets import (
 )
 from scraper.charge_summary import summarize_charge
 from scraper.database import Database
-from scraper.searcher import ethnicity_review_verdict, format_race_label
-
-_BROWSE_COLS = [
-    "name", "race", "actual", "review", "charge", "state", "date", "source",
-]
-_BROWSE_LABELS = {
-    "name": "Name",
-    "race": "Stated race",
-    "actual": "Actual race",
-    "review": "Classification",
-    "charge": "Charge",
-    "state": "State",
-    "date": "Date",
-    "source": "Source",
-}
-_REVIEW_FILTERS = ["All", "Correct", "Incorrect", "Unreviewed"]
+from scraper.searcher import format_race_label
 
 
 class MisclassifyBuildMixin:
@@ -43,31 +37,45 @@ class MisclassifyBuildMixin:
         controls.pack(fill="x", padx=8, pady=8)
 
         races = ["All"] + self._browse_race_choices()
-        actuals = ["All", "(Unset)"] + list(ACTUAL_RACE_OPTIONS)
-        for eth in self._browse_actual_choices():
-            if eth not in actuals:
-                actuals.append(eth)
+        actuals = ["All", "(Unset)"] + list(BROWSE_ACTUAL_RACES)
 
-        self.browse_stated_race = ctk.CTkComboBox(controls, values=races, width=120)
-        self.browse_actual_race_filter = ctk.CTkComboBox(controls, values=actuals, width=150)
-        self.browse_review = ctk.CTkComboBox(controls, values=_REVIEW_FILTERS, width=130)
-        self.browse_limit = ctk.CTkEntry(controls, width=90, placeholder_text="1000")
+        self.browse_stated_race = ctk.CTkComboBox(
+            controls, values=races, width=120, command=self._browse_filter_changed
+        )
+        self.browse_actual_race_filter = ctk.CTkComboBox(
+            controls, values=actuals, width=120, command=self._browse_filter_changed
+        )
+        self.browse_review = ctk.CTkComboBox(
+            controls,
+            values=VERIFICATION_FILTERS,
+            width=170,
+            command=self._browse_filter_changed,
+        )
+        # 0 / blank = no cap (load full filtered list)
+        self.browse_limit = ctk.CTkEntry(controls, width=90, placeholder_text="0 = all")
         self.browse_stated_race.set("All")
         self.browse_actual_race_filter.set("All")
-        self.browse_review.set("All")
-        self.browse_limit.insert(0, "1000")
+        self.browse_review.set("Unverified")
+        self.browse_limit.insert(0, "0")
+        self.browse_misclass_only = ctk.CTkCheckBox(
+            controls,
+            text="Suspected misclassifications only",
+            font=FONT_SM,
+            command=self._browse_filter_changed,
+        )
 
         for label, widget in (
             ("Stated race", self.browse_stated_race),
             ("Actual race", self.browse_actual_race_filter),
-            ("Classification", self.browse_review),
-            ("Limit", self.browse_limit),
+            ("Verification", self.browse_review),
+            ("Limit (0=all)", self.browse_limit),
         ):
             ctk.CTkLabel(controls, text=label, font=FONT_SM, text_color=C["muted"]).pack(
                 side="left", padx=(10, 3), pady=10
             )
             widget.pack(side="left", padx=(0, 6), pady=10)
 
+        self.browse_misclass_only.pack(side="left", padx=(10, 8), pady=10)
         self.browse_refresh_btn = ctk.CTkButton(
             controls, text="Refresh", command=self._browse_refresh
         )
@@ -77,8 +85,10 @@ class MisclassifyBuildMixin:
         )
 
         self.browse_status = ctk.CTkLabel(
-            controls, text="Filter arrests and review with the sidebar.",
-            font=FONT_SM, text_color=C["muted"],
+            controls,
+            text="Filter arrests and review with the sidebar.",
+            font=FONT_SM,
+            text_color=C["muted"],
         )
         self.browse_status.pack(side="left", padx=12)
 
@@ -90,13 +100,15 @@ class MisclassifyBuildMixin:
         left = ctk.CTkFrame(pane, fg_color="transparent")
         wrap, self.mc_tree = _tree_frame(left)
         wrap.pack(fill="both", expand=True)
-        self.mc_tree.configure(columns=_BROWSE_COLS)
-        _enable_tree_column_sort(self.mc_tree, _BROWSE_COLS, _BROWSE_LABELS)
+        self.mc_tree.configure(columns=BROWSE_COLS)
+        _enable_tree_column_sort(self.mc_tree, BROWSE_COLS, BROWSE_LABELS)
         _stretch_columns(
-            self.mc_tree, _BROWSE_COLS, [200, 100, 120, 110, 180, 50, 110, 120]
+            self.mc_tree, BROWSE_COLS, [200, 100, 120, 140, 180, 50, 110, 120]
         )
 
         self.browse_sidebar = RecordSidebar(pane)
+        # Coarse actual-race buckets only on Browse (not the long ethnicity list).
+        self.browse_sidebar._actual_race_options = list(BROWSE_ACTUAL_RACES)
         self.browse_sidebar.bind_after(self.after)
         self.browse_sidebar.bind_verdict(self._browse_sidebar_verdict)
         self.browse_sidebar.bind_actual_race(self._browse_sidebar_actual_race)
@@ -114,20 +126,18 @@ class MisclassifyBuildMixin:
         except Exception:
             return []
 
-    def _browse_actual_choices(self) -> List[str]:
-        try:
-            return Database(self.db_path).distinct_likely_ethnicities()
-        except Exception:
-            return []
+    def _browse_filter_changed(self, _choice: str = "") -> None:
+        if getattr(self, "_browse_busy", False):
+            return
+        self._browse_refresh()
+
+    @staticmethod
+    def _browse_verification_query(label: Optional[str]) -> Optional[str]:
+        return verification_query(label)
 
     @staticmethod
     def _browse_review_label(record: Dict[str, Any]) -> str:
-        verdict = ethnicity_review_verdict(record)
-        if verdict == "correct":
-            return "Correct"
-        if verdict == "incorrect":
-            return "Incorrect"
-        return "Unreviewed"
+        return verification_label(record)
 
     @staticmethod
     def _browse_name(record: Dict[str, Any]) -> str:
@@ -138,10 +148,12 @@ class MisclassifyBuildMixin:
         )
 
     def _browse_row_values(self, record: Dict[str, Any]) -> tuple:
+        raw_actual = (record.get("likely_ethnicity") or "").strip()
+        actual = bucket_actual_race(raw_actual) or raw_actual or "—"
         return (
             self._browse_name(record),
             format_race_label(record.get("race") or ""),
-            record.get("likely_ethnicity") or "—",
+            actual,
             self._browse_review_label(record),
             summarize_charge(record),
             record.get("state") or "—",

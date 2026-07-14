@@ -68,6 +68,49 @@ class DatabaseCoreTests(unittest.TestCase):
         self.assertGreaterEqual(len(bulk), 4)
         self.assertFalse(any(s.id == "bustednewspaper" for s in bulk))
 
+    def test_ethnicity_verdict_persists_and_filters(self):
+        """Confirmations write flags and verification filter finds them."""
+        import tempfile
+        from pathlib import Path
+
+        from gui_app.shared.verdict_persist import persist_ethnicity_verdict
+        from scraper.searcher import ethnicity_review_verdict
+
+        tmp = Path(tempfile.mkdtemp()) / "verdict.db"
+        db = Database(str(tmp))
+        try:
+            db.import_records(
+                [
+                    {
+                        "first_name": "Juan",
+                        "last_name": "Garcia",
+                        "race": "White",
+                        "source_url": "v:1",
+                    }
+                ]
+            )
+            row = db.search_records(limit=1)[0]
+            rid = int(row["id"])
+            ok, flags, err = persist_ethnicity_verdict(
+                str(tmp), {"id": rid, "flags": None}, "correct"
+            )
+            self.assertTrue(ok, err)
+            self.assertEqual(ethnicity_review_verdict({"flags": flags}), "correct")
+            saved = dict(
+                db._conn.execute(
+                    "SELECT flags FROM arrests WHERE id = ?", (rid,)
+                ).fetchone()
+            )
+            self.assertEqual(
+                ethnicity_review_verdict({"flags": saved["flags"]}), "correct"
+            )
+            confirmed = db.search_records(ethnicity_review="correct", limit=0)
+            self.assertEqual(len(confirmed), 1)
+            unverified = db.search_records(ethnicity_review="unreviewed", limit=0)
+            self.assertEqual(len(unverified), 0)
+        finally:
+            db.close()
+
     def test_dedupe_merges_multi_state_charges(self):
         self.db.import_records(
             [

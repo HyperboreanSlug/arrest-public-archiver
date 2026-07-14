@@ -65,6 +65,32 @@ class PhotoQualityTests(unittest.TestCase):
             im.save(path, format="WEBP", quality=80)
             self.assertFalse(is_placeholder_photo(path))
 
+    def test_gray_photo_not_available_placeholder(self):
+        """mugshots.com gray 'photo not available' tiles are not mugshots."""
+        from PIL import Image
+
+        from scraper.mugshot_ethnicity.photo_quality import (
+            KNOWN_PLACEHOLDER_MD5,
+            bytes_non_mugshot_reason,
+            clear_placeholder_cache,
+            is_placeholder_photo,
+            record_has_real_photo,
+        )
+
+        clear_placeholder_cache()
+        self.assertIn("acca619e6684d7ff5e7ad8d8a79ca6f3", KNOWN_PLACEHOLDER_MD5)
+        # Near-uniform mid-gray field (site stub look)
+        im = Image.new("RGB", (400, 500), (218, 218, 218))
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "gray_stub.jpg"
+            im.save(path, format="JPEG", quality=85)
+            self.assertTrue(is_placeholder_photo(path))
+            reason = bytes_non_mugshot_reason(path.read_bytes(), ext=".jpg")
+            self.assertIsNotNone(reason)
+            self.assertIn("gray", (reason or "").lower())
+            rec = {"photo_path": str(path), "photo_url": "https://example/x.jpg"}
+            self.assertFalse(record_has_real_photo(rec))
+
 
 if __name__ == "__main__":
     unittest.main()

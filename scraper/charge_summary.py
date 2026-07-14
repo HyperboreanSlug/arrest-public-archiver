@@ -71,27 +71,30 @@ def summarize_charge(record_or_text: Any) -> str:
     Multi-charge strings are expanded, split, summarized, then unique labels
     joined with ``; `` (priority order preserved).
     """
+    from scraper.charge_expand import expand_charge
+    from scraper.charge_sanitize import is_non_charge, sanitize_charge_text
+
     if record_or_text is None:
         return "—"
     if isinstance(record_or_text, dict):
-        parts = [
-            record_or_text.get("charge_description"),
-            record_or_text.get("charge_group"),
-            record_or_text.get("offense"),
-            record_or_text.get("offense_description"),
-            record_or_text.get("statute"),
-        ]
-        blob = " | ".join(str(p) for p in parts if p and str(p).strip())
+        # Prefer full expand (includes raw_json offense recovery).
+        blob = expand_charge(record_or_text)
+        if blob in ("", "—"):
+            return "—"
     else:
-        blob = str(record_or_text)
+        blob = sanitize_charge_text(str(record_or_text))
+        if not blob or is_non_charge(blob):
+            return "—"
     segments = _split_charges(blob)
     if not segments:
         return "—"
     labels: List[str] = []
     seen: set = set()
     for seg in segments:
+        if is_non_charge(seg):
+            continue
         lab = _match_one(seg)
-        if not lab:
+        if not lab or is_non_charge(lab):
             continue
         key = lab.upper()
         if key in seen:

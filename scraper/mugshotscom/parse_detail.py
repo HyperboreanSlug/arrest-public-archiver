@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -15,6 +15,7 @@ from .catalog import (
     normalize_county_slug,
     state_code_from_slug,
 )
+from .parse_charges import charges_from_soup
 
 _FIELD_MAP = {
     "last name": "last_name",
@@ -64,38 +65,6 @@ def _parse_booking_datetime(raw: str) -> Dict[str, str]:
     return out
 
 
-def _charges_from_soup(soup: BeautifulSoup) -> Optional[str]:
-    charges: List[str] = []
-    for tr in soup.select("table tr"):
-        cells = [c.get_text(" ", strip=True) for c in tr.find_all(["td", "th"])]
-        if len(cells) >= 2 and cells[0].lower() in ("description", "charge", "charges"):
-            charges.append(cells[1])
-    for field in soup.select(".field"):
-        name = _text(field.select_one(".name")) or ""
-        if "charge" in name.lower():
-            val = _text(field.select_one(".value")) or field.get_text(" ", strip=True)
-            m = re.search(r"Description\s*([A-Z0-9].+?)(?:Case Number|Agency|$)", val or "")
-            if m:
-                charges.append(m.group(1).strip())
-            elif val and val.lower() not in ("charge number", "charges:"):
-                charges.append(val)
-    h1 = _text(soup.select_one("h1#item-title, h1"))
-    if h1 and " - " in h1:
-        tail = h1.split(" - ", 1)[1]
-        tail = re.sub(r"\s*-\s*[A-Za-z ]+$", "", tail).strip()
-        if tail and len(tail) > 3:
-            charges.append(tail)
-    seen = set()
-    out = []
-    for c in charges:
-        key = c.casefold()
-        if key in seen or not c.strip():
-            continue
-        seen.add(key)
-        out.append(c.strip())
-    return "; ".join(out) if out else None
-
-
 def parse_detail(html: str, source_url: str) -> Dict[str, Any]:
     """Parse a mugshots.com booking detail page."""
     soup = BeautifulSoup(html, "html.parser")
@@ -142,7 +111,7 @@ def parse_detail(html: str, source_url: str) -> Dict[str, Any]:
     if first or last:
         record["full_name"] = " ".join(p for p in (first, middle, last) if p)
 
-    charges = _charges_from_soup(soup)
+    charges = charges_from_soup(soup)
     if charges:
         record["charge_description"] = charges
 

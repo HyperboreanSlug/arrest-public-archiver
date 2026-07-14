@@ -70,6 +70,64 @@ class ChargeFilterTests(unittest.TestCase):
             summarize_charge("UNL RESTRAINT"),
             "KIDNAPPING / FALSE IMPRISONMENT",
         )
+        # Texas multi-charge booking line (card summary path)
+        tx = (
+            "EVADING ARREST DETENTION; FAIL TO ID FUGITIVE FRM JUSTICE "
+            "REFUSE TO GIVE; MTR ENGAGING IN ORGANIZED CRIMINAL ACTIVITY"
+        )
+        labels = summarize_charge(tx)
+        self.assertIn("EVADING ARREST", labels)
+        self.assertIn("FAILURE TO IDENTIFY", labels)
+        self.assertIn("ORGANIZED CRIMINAL ACTIVITY", labels)
+        self.assertNotIn("Mtr", labels)
+        from gui_app.shared.export_card_fields import crime
+
+        card = crime({"charge_description": tx})
+        self.assertIn("Evading Arrest", card)
+        self.assertIn("Failure To Identify", card)
+        self.assertLess(len(card), len(tx))
+        self.assertEqual(
+            summarize_charge("EVADING ARREST DET W/VEH"),
+            "EVADING ARREST",
+        )
+        self.assertEqual(
+            crime({"charge_description": "EVADING ARREST DET W/VEH"}),
+            "Evading Arrest",
+        )
+        # KY-style OPER MV U/INFL ALC .08 → DUI on table + card
+        for raw in (
+            "Oper Mv U/INFL Alc . 08",
+            "OPER MV U/INFL ALC .08 (189A.010(1A) 1ST",
+            "OPER MTR VEHICAL U/INFL ALC .08",
+        ):
+            self.assertEqual(summarize_charge(raw), "DUI / DWI", msg=raw)
+        multi = (
+            "OPER MV U/INFL ALC .08 (189A.010(1A) 1ST; "
+            "NO OPERATORS/MOPED LICENSE; "
+            "ENDANGERING THE WELFARE OF A MINOR"
+        )
+        labels = summarize_charge(multi)
+        self.assertIn("DUI / DWI", labels)
+        self.assertIn("DRIVING WHILE SUSPENDED / REVOKED", labels)
+        self.assertIn("CHILD ABUSE / ENDANGERMENT", labels)
+        self.assertIn("DUI", crime({"charge_description": multi}))
+        # Multi-charge FL booking → compact unique labels for cards
+        fl = (
+            "RESISTING OFFICER WITHOUT VIOLENCE; "
+            "POSS. OF WEAPON IN COMMISSION OF FELONY; "
+            "GRAND THEFT 3RD DEGREE-FIREARM; "
+            "POSS. OF CANNABIS >20 GMS (WITH A WEAPON); "
+            "FLEE/ELUDE POLICE-FLEE ELUDE LEO WITH LIGHTS SIREN ACTIVE"
+        )
+        fl_sum = summarize_charge(fl)
+        self.assertIn("RESISTING ARREST", fl_sum)
+        self.assertIn("WEAPONS OFFENSE", fl_sum)
+        self.assertIn("THEFT / LARCENY", fl_sum)
+        self.assertIn("POSSESSION OF MARIJUANA", fl_sum)
+        self.assertIn("ELUDING / FLEEING", fl_sum)
+        fl_card = crime({"charge_description": fl})
+        self.assertLess(len(fl_card), len(fl))
+        self.assertIn("Resisting", fl_card)
 
     def test_charge_classifications_and_filter(self):
         self.assertEqual(classify_charge("RAPE FIRST DEGREE"), "sex_crimes")

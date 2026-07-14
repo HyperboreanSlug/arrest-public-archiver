@@ -71,10 +71,19 @@ def classify_charge(record_or_text: Any) -> str:
     Empty / unmatchable → "unknown" or "other".
     Jail abbreviations are expanded before matching.
     """
-    text = _charge_blob(record_or_text)
-    if not text or not text.strip():
-        return "unknown"
-    text = expand_charge_text(text) or text
+    from scraper.charge_expand import expand_charge
+
+    if isinstance(record_or_text, dict):
+        text = expand_charge(record_or_text)
+        if text in ("", "—"):
+            return "unknown"
+    else:
+        text = _charge_blob(record_or_text)
+        if not text or not text.strip():
+            return "unknown"
+        text = expand_charge_text(text)
+        if not text:
+            return "unknown"
     for cat, patterns in _COMPILED:
         for pat in patterns:
             if pat.search(text):

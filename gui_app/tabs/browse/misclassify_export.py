@@ -54,14 +54,18 @@ class MisclassifyExportMixin:
         with open(path, "w", newline="", encoding="utf-8") as fh:
             out = csv.writer(fh)
             out.writerow([
-                "name", "stated_race", "actual_race", "classification",
+                "name", "stated_race", "actual_race", "verification",
                 "charge_category", "state", "arrest_date", "source",
             ])
+            from gui_app.tabs.browse.misclassify_constants import bucket_actual_race
+
             for rec in self._browse_records:
+                raw_actual = (rec.get("likely_ethnicity") or "").strip()
+                actual = bucket_actual_race(raw_actual) or raw_actual
                 out.writerow([
                     self._browse_name(rec),
                     format_race_label(rec.get("race") or ""),
-                    rec.get("likely_ethnicity") or "",
+                    actual,
                     self._browse_review_label(rec),
                     rec.get("charge_category") or "",
                     rec.get("state") or "",

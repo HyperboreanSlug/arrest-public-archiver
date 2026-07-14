@@ -34,6 +34,7 @@ class QuerySearchMixin:
         state: Optional[str] = None,
         race: Optional[str] = None,
         likely_ethnicity: Optional[str] = None,
+        likely_ethnicity_in: Optional[List[str]] = None,
         ethnicity_review: Optional[str] = None,
         charge_category: Optional[str] = None,
         source_system: Optional[str] = None,
@@ -89,7 +90,22 @@ class QuerySearchMixin:
                 params.extend(matched)
             else:
                 q += " AND 0"
-        if likely_ethnicity and str(likely_ethnicity).strip().lower() not in (
+        if likely_ethnicity_in is not None:
+            vals = [
+                str(v).strip()
+                for v in (likely_ethnicity_in or [])
+                if v is not None and str(v).strip()
+            ]
+            if not vals:
+                q += " AND 0"
+            else:
+                ph = ",".join("?" * len(vals))
+                q += (
+                    " AND LOWER(TRIM(COALESCE(likely_ethnicity, ''))) "
+                    f"IN ({ph})"
+                )
+                params.extend([v.lower() for v in vals])
+        elif likely_ethnicity and str(likely_ethnicity).strip().lower() not in (
             "",
             "all",
             "*",
@@ -108,21 +124,21 @@ class QuerySearchMixin:
         if source_system and str(source_system).lower() not in ("all", "", "*"):
             q += " AND LOWER(COALESCE(source_system, '')) = LOWER(?)"
             params.append(source_system)
-        # Over-fetch when filtering review status in Python (JSON flags).
+        # Review status lives in JSON flags — filter in Python.
+        # When a review filter is active, always load the full match set
+        # (then apply limit), so a small LIMIT does not hide later rows.
         review = (ethnicity_review or "").strip().lower()
-        fetch_limit = limit
-        if review and review not in ("all", "*", ""):
-            fetch_limit = max(limit * 5, 5000) if limit else 0
-        if fetch_limit:
-            q += " ORDER BY arrest_date DESC, last_name ASC LIMIT ? OFFSET ?"
-            params.extend([fetch_limit, offset])
-        else:
+        review_active = bool(review and review not in ("all", "*", ""))
+        if review_active or not limit:
             q += " ORDER BY arrest_date DESC, last_name ASC"
             if offset:
                 q += " LIMIT -1 OFFSET ?"
                 params.append(offset)
+        else:
+            q += " ORDER BY arrest_date DESC, last_name ASC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
         rows = [dict(r) for r in self._conn.execute(q, params).fetchall()]
-        if review and review not in ("all", "*", ""):
+        if review_active:
             from scraper.searcher import ethnicity_review_verdict
 
             filtered = []
