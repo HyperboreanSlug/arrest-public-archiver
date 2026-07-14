@@ -15,7 +15,9 @@ def _canonical_race_key(recorded_race: str) -> str:
         return "UNKNOWN"
     r = " ".join(raw.upper().replace("_", " ").replace("-", " ").split())
     r = r.replace(" / ", "/").replace("/ ", "/").replace(" /", "/")
-    r_spaced = " ".join(r.replace("/", " ").split())
+    # Drop punctuation so "American (US)", "Am. Ind" match aliases cleanly.
+    r_clean = re.sub(r"[^\w\s/]+", " ", r)
+    r_spaced = " ".join(r_clean.replace("/", " ").split())
     if r_spaced in _RACE_ALIASES:
         return _RACE_ALIASES[r_spaced]
     if len(r_spaced) == 1 and r_spaced in _RACE_ALIASES:
@@ -24,6 +26,18 @@ def _canonical_race_key(recorded_race: str) -> str:
         prefix = r_spaced.replace("UNKNOWN", " ").strip()
         if prefix in ("", "U", "UNK", "N/A", "NA"):
             return "UNKNOWN"
+    if "NO SELECTION" in r_spaced or r_spaced in ("NOSELECTION", "NOT SELECTED"):
+        return "UNKNOWN"
+    # Am Ind / Amer Indian abbreviations (not bare "American")
+    if (
+        r_spaced in ("AM IND", "AMIND")
+        or r_spaced.startswith("AM IND ")
+        or r_spaced.startswith("AMER INDIAN")
+    ):
+        return "NATIVE AMERICAN"
+    # Bare "American (US)" / "American" (not American Indian) → Other/Unknown
+    if r_spaced == "AMERICAN" or r_spaced.startswith("AMERICAN US"):
+        return "OTHER"
     if r_spaced in ("OTHER ASIAN", "ASIAN OTHER", "OTHER ASIAN PACIFIC ISLANDER"):
         return "OTHER ASIAN"
     if "OTHER" in r_spaced and "ASIAN" in r_spaced:
@@ -38,6 +52,15 @@ def _canonical_race_key(recorded_race: str) -> str:
         or "ALASKA NATIVE" in r_spaced
     ):
         return "NATIVE AMERICAN"
+    # MENA (Middle East / North Africa) shares stated-race bucket with Indian
+    if (
+        "MIDDLE EASTERN" in r_spaced
+        or "NORTH AFRICAN" in r_spaced
+        or "NORTH AFRICA" in r_spaced
+        or r_spaced in ("MENA", "NEMA", "INDIAN MENA", "INDIAN NEMA")
+        or ("INDIAN" in r_spaced and ("MENA" in r_spaced or "NEMA" in r_spaced))
+    ):
+        return "INDIAN"
     words = r_spaced.split()
     if "BLACK" in words or "AFRICAN AMERICAN" in r_spaced:
         return "BLACK"
@@ -61,11 +84,21 @@ def _canonical_race_key(recorded_race: str) -> str:
 
 
 def format_race_label(recorded_race: str) -> str:
+    raw = (recorded_race or "").strip()
+    # Accept already-merged display labels (dropdown selection → filter)
+    lowered = raw.lower().replace("  ", " ")
+    if lowered in ("indian / mena", "indian/mena", "indian / nema", "indian/nema"):
+        return "Indian / MENA"
+    if lowered in ("other/unknown", "other / unknown"):
+        return "Other/Unknown"
     key = _canonical_race_key(recorded_race)
     if key in ("UNKNOWN", "OTHER"):
         return "Other/Unknown"
     if key == "WHITE HISPANIC":
         return "White"
+    if key == "INDIAN":
+        # Shared bucket: South Asian Indian + MENA stated-race values
+        return "Indian / MENA"
     if len(key) <= 2:
         return key
     return key.title().replace("Or", "or").replace("/ ", "/")
