@@ -72,14 +72,20 @@ def _canonical_race_key(recorded_race: str) -> str:
         or ("MULTI" in words and "RACIAL" in words)
     ):
         return "OTHER"
-    if "ASIAN" in r_spaced and "PACIFIC" in r_spaced:
-        return "ASIAN / PACIFIC ISLANDER"
+    # Asian + Pacific Islander (incl. abbreviated "Pac. Isl.") → one bucket
+    if "ASIAN" in r_spaced and (
+        "PACIFIC" in r_spaced
+        or "PAC ISL" in r_spaced
+        or "PAC ISLAND" in r_spaced
+        or re.search(r"\bPAC\b", r_spaced)
+    ):
+        return "ASIAN"
     if r_spaced in (
         "PACIFIC ISLANDER",
         "NATIVE HAWAIIAN",
         "NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER",
-    ):
-        return "PACIFIC ISLANDER"
+    ) or "PACIFIC ISLAND" in r_spaced:
+        return "ASIAN"
     return r_spaced
 
 
@@ -91,6 +97,15 @@ def format_race_label(recorded_race: str) -> str:
         return "Indian / MENA"
     if lowered in ("other/unknown", "other / unknown"):
         return "Other/Unknown"
+    if lowered in (
+        "asian",
+        "asian or pac isl",
+        "asian or pacific islander",
+        "asian / pacific islander",
+        "asian/pacific islander",
+        "pacific islander",
+    ):
+        return "Asian"
     key = _canonical_race_key(recorded_race)
     if key in ("UNKNOWN", "OTHER"):
         return "Other/Unknown"
@@ -99,6 +114,8 @@ def format_race_label(recorded_race: str) -> str:
     if key == "INDIAN":
         # Shared bucket: South Asian Indian + MENA stated-race values
         return "Indian / MENA"
+    if key in ("ASIAN", "ASIAN / PACIFIC ISLANDER", "PACIFIC ISLANDER"):
+        return "Asian"
     if len(key) <= 2:
         return key
     return key.title().replace("Or", "or").replace("/ ", "/")

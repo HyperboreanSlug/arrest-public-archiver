@@ -47,6 +47,18 @@ _RACE_ALIASES = {
     "HISPANIC OR LATINO": "HISPANIC", "LATINO OR HISPANIC": "HISPANIC",
     "HISPANIC/LATINO": "HISPANIC", "LATINO/HISPANIC": "HISPANIC",
     "A": "ASIAN", "API": "ASIAN", "ASIAN": "ASIAN",
+    # Asian + Pacific Islander booking labels share one stated-race bucket
+    "ASIAN OR PAC ISL": "ASIAN",
+    "ASIAN OR PAC ISLANDER": "ASIAN",
+    "ASIAN OR PACIFIC ISLANDER": "ASIAN",
+    "ASIAN OR PACIFIC ISL": "ASIAN",
+    "ASIAN PACIFIC ISLANDER": "ASIAN",
+    "ASIAN / PACIFIC ISLANDER": "ASIAN",
+    "ASIAN/PACIFIC ISLANDER": "ASIAN",
+    "PACIFIC ISLANDER": "ASIAN",
+    "NATIVE HAWAIIAN": "ASIAN",
+    "NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER": "ASIAN",
+    "P": "ASIAN",
     "U": "UNKNOWN", "UNK": "UNKNOWN", "UNKNOWN": "UNKNOWN",
     "N/A": "UNKNOWN", "NA": "UNKNOWN", "NONE": "UNKNOWN", "NULL": "UNKNOWN",
     "": "UNKNOWN",
@@ -57,7 +69,6 @@ _RACE_ALIASES = {
     "J": "ASIAN",
     "V": "ASIAN",
     "Z": "ASIAN",
-    "P": "PACIFIC ISLANDER",
     "I": "NATIVE AMERICAN",
     # Single-letter "N" is used as Native American in some booking feeds
     # (distinct from N/A / NA which map to UNKNOWN above).
