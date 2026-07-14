@@ -199,8 +199,9 @@ tests/                         # Smoke suite split under tests/smoke/
 | `charge_recover.py` | Recover offense text from raw_json when charge is a stub |
 | `charge_summary.py` | Standardized short labels for tables (expand then match) |
 | `charge_summary_rules.py` | Compile summary rule tables |
-| `charge_summary_rules_a.py` | Summary patterns (immigration through violent) |
-| `charge_summary_rules_b.py` | Summary patterns (weapons through public order) |
+| `charge_summary_rules_a.py` | Summary patterns part A |
+| `charge_summary_rules_b.py` | Summary patterns part B |
+| `charge_summary_rules_c.py` | Summary patterns part C |
 
 ### CLI
 

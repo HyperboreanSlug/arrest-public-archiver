@@ -139,6 +139,7 @@ _CARD_ACRONYMS = {
     "Ice": "ICE",
     "Id": "ID",
     "Mv": "MV",
+    "Be": "B&E",
 }
 
 
