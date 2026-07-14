@@ -6,6 +6,7 @@ import unittest
 from tests.smoke._path import ROOT  # noqa: F401
 
 from scraper.charge_classifications import classify_charge, classify_record
+from scraper.charge_summary import summarize_charge
 from scraper.database import Database
 from scraper.searcher import ArrestSearcher
 
@@ -16,6 +17,30 @@ class ChargeFilterTests(unittest.TestCase):
 
     def tearDown(self):
         self.db.close()
+
+    def test_charge_summaries_merge_aliases(self):
+        for raw in (
+            "ICE",
+            "US IMMIGRATION",
+            "IMMIGRATION HOLD",
+            "immigration hold",
+            "HOLD FOR ICE",
+            "FEDERAL OFFENSE (IMMIGRATION)",
+        ):
+            self.assertEqual(
+                summarize_charge(raw),
+                "ICE IMMIGRATION HOLD",
+                msg=raw,
+            )
+        self.assertEqual(summarize_charge("Fta"), "FAILURE TO APPEAR")
+        self.assertEqual(
+            summarize_charge("ICE; FAILURE TO APPEAR"),
+            "ICE IMMIGRATION HOLD; FAILURE TO APPEAR",
+        )
+        self.assertEqual(
+            summarize_charge({"charge_description": "D.U.I. (ALCOHOL)"}),
+            "DUI / DWI",
+        )
 
     def test_charge_classifications_and_filter(self):
         self.assertEqual(classify_charge("RAPE FIRST DEGREE"), "sex_crimes")

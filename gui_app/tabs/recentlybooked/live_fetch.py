@@ -59,12 +59,12 @@ class RbLiveFetchMixin:
                             source_system=src
                         )
                         if purged:
-                            self.log(
+                            self.log_live(
                                 f"Live feed: deleted {purged} "
                                 f"{src} arrests without a real photo."
                             )
                     except Exception as exc:
-                        self.log(f"Live feed purge ({src}) skipped: {exc}")
+                        self.log_live(f"Live feed purge ({src}) skipped: {exc}")
 
             from scraper.mugshot_sources import IdentityIndex, MultiSourceOrchestrator
 
@@ -82,7 +82,7 @@ class RbLiveFetchMixin:
                 )
                 if n == 1 or n % 5 == 0:
                     src = rec.get("source_system") or "?"
-                    self.log(
+                    self.log_live(
                         f"Live feed ({src}): #{n} · "
                         f"+{counters['imported']} imported · "
                         f"{counters['rejected']} no-photo dropped…"
@@ -96,14 +96,14 @@ class RbLiveFetchMixin:
             )
             for sid, err in (multi.errors or {}).items():
                 errors.append(f"{sid}: {err}")
-                self.log(f"Live feed {sid} skipped: {err}")
+                self.log_live(f"Live feed {sid} skipped: {err}")
             if multi.skipped_identity:
-                self.log(
+                self.log_live(
                     f"Live feed: skipped {multi.skipped_identity} "
                     "cross-host identity duplicate(s)."
                 )
             for sid, n in (multi.by_source or {}).items():
-                self.log(f"Live feed {sid}: {n} record callback(s).")
+                self.log_live(f"Live feed {sid}: {n} record callback(s).")
             try:
                 dret = db.remove_cross_source_duplicates(
                     dry_run=False,
@@ -112,11 +112,11 @@ class RbLiveFetchMixin:
                 )
                 _removed = int(dret.get("deleted") or 0)
                 if _removed:
-                    self.log(
+                    self.log_live(
                         f"Live feed cross-source dedupe: removed "
                         f"{_removed} duplicate row(s)."
                     )
             except Exception as exc:
-                self.log(f"Live feed cross-source dedupe skipped: {exc}")
+                self.log_live(f"Live feed cross-source dedupe skipped: {exc}")
         finally:
             db.close()

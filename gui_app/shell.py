@@ -1,7 +1,6 @@
 """Application shell for Arrest Public Archiver."""
 from __future__ import annotations
 
-import queue
 from pathlib import Path
 from typing import Any, Dict
 
@@ -9,6 +8,7 @@ import customtkinter as ctk
 
 from gui_app.lazy_tabs import LazyTabHost
 from gui_app.shell_health import SourceHealthMixin
+from gui_app.shell_log import ChannelLogMixin
 from gui_app.theme import C, FONT_SM, FONT_TITLE, style_treeview
 from gui_app.tabs.browse import BrowseTabMixin
 from gui_app.tabs.browse.deepface_reports import DeepfaceReportsTabMixin
@@ -25,6 +25,7 @@ from scraper.database import Database, backup_database_file
 
 
 class ArrestArchiverApp(
+    ChannelLogMixin,
     SourceHealthMixin,
     BrowseTabMixin,
     MisclassifyTabMixin,
@@ -48,7 +49,7 @@ class ArrestArchiverApp(
         self.app_settings = load_settings()
         self.db_path = str(self.app_settings["db_path"])
         self.db = Database(self.db_path)
-        self.log_queue: queue.Queue[str] = queue.Queue()
+        self._init_channel_log()
         self.is_running = False
         self._source_health: Dict[str, Dict[str, Any]] = {}
         self._source_health_busy = False
@@ -77,7 +78,7 @@ class ArrestArchiverApp(
             segmented_button_selected_hover_color=C["select"],
         )
         tabs.pack(fill="both", expand=True, padx=10, pady=(8, 4))
-        self.tab_host = LazyTabHost(tabs, on_change=lambda _n: self._drain_log())
+        self.tab_host = LazyTabHost(tabs, on_change=self._on_log_context_change)
         self.tab_host.register("Browse", self._build_browse)
         self.tab_host.register("RecentlyBooked", self._build_recentlybooked)
         self.tab_host.register("DeepFace", self._build_deepface)
@@ -93,23 +94,6 @@ class ArrestArchiverApp(
         self.after(250, self._drain_log)
         # Ping mugshot hosts in the background so Live Feed can show real status.
         self.after(100, lambda: self._start_source_health_probe(force=False))
-
-    def log(self, message: str) -> None:
-        self.log_queue.put(str(message))
-
-    def _drain_log(self) -> None:
-        try:
-            while True:
-                self.activity_log.insert(
-                    "end", self.log_queue.get_nowait().rstrip() + "\n"
-                )
-                self.activity_log.see("end")
-        except queue.Empty:
-            pass
-        try:
-            self.after(250, self._drain_log)
-        except Exception:
-            pass
 
     def _refresh_db_status(self) -> None:
         try:

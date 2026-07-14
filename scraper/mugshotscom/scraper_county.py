@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Set
 
 from .catalog import (
@@ -49,6 +48,22 @@ class MugshotsComCountyMixin:
             if list_url in visited_pages:
                 break
             visited_pages.add(list_url)
+            loc = f"mugshotscom · {state}/{county} · p{page}"
+            if progress_cb:
+                try:
+                    progress_cb(
+                        len(records),
+                        None,
+                        {
+                            "state": state,
+                            "county": county,
+                            "page": page,
+                            "source": "mugshotscom",
+                            "label": loc,
+                        },
+                    )
+                except TypeError:
+                    progress_cb(len(records), None)
             try:
                 html = self.client.get(
                     list_url,
@@ -79,14 +94,12 @@ class MugshotsComCountyMixin:
                 known.add(url)
                 card = dict(card)
                 card["referer"] = list_url
+                card["_scrape_loc"] = loc
                 batch.append(card)
             # All cards already known (or empty page set) → stop; do not keep
             # requesting higher page numbers of the same listing.
             if not batch:
                 break
-
-            def work(card: Dict[str, Any]) -> Dict[str, Any]:
-                return self._enrich(card, with_photos=with_photos)
 
             if workers == 1:
                 for card in batch:
@@ -94,34 +107,24 @@ class MugshotsComCountyMixin:
                         return records
                     if row_limit and len(records) >= row_limit:
                         return records
-                    done = work(card)
+                    done = self._enrich(card, with_photos=with_photos)
                     records.append(done)
                     if record_cb:
                         record_cb(done, len(records))
                     if progress_cb:
                         progress_cb(len(records), row_limit or None)
             else:
-                with ThreadPoolExecutor(max_workers=workers) as pool:
-                    futures = [pool.submit(work, c) for c in batch]
-                    for fut in as_completed(futures):
-                        if self._cancelled(cancel_check):
-                            break
-                        try:
-                            done = fut.result()
-                        except Exception as exc:
-                            done = {
-                                "scrape_error": str(exc),
-                                "source_system": "mugshotscom",
-                            }
-                        with lock:
-                            if row_limit and len(records) >= row_limit:
-                                break
-                            records.append(done)
-                            n = len(records)
-                        if record_cb:
-                            record_cb(done, n)
-                        if progress_cb:
-                            progress_cb(n, row_limit or None)
+                self._enrich_batch_parallel(
+                    batch,
+                    workers=workers,
+                    with_photos=with_photos,
+                    records=records,
+                    lock=lock,
+                    row_limit=row_limit,
+                    cancel_check=cancel_check,
+                    record_cb=record_cb,
+                    progress_cb=progress_cb,
+                )
             page += 1
         return records[:row_limit] if row_limit else records
 

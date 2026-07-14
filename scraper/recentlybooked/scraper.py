@@ -51,8 +51,16 @@ class RecentlyBookedScraper(RecentlyBookedScrapeMixin, RecentlyBookedProcessMixi
         return bool(cancel_check and cancel_check())
 
     @staticmethod
-    def _report(progress_cb: Optional[ProgressCallback], count: int) -> None:
-        if progress_cb:
+    def _report(
+        progress_cb: Optional[ProgressCallback],
+        count: int,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if not progress_cb:
+            return
+        try:
+            progress_cb(count, None, context)
+        except TypeError:
             progress_cb(count, None)
 
     @staticmethod
@@ -63,6 +71,25 @@ class RecentlyBookedScraper(RecentlyBookedScrapeMixin, RecentlyBookedProcessMixi
     ) -> None:
         if record_cb:
             record_cb(record, count)
+
+    @staticmethod
+    def _loc_label(
+        *, state: str = "", county: str = "", page: int = 0, source: str = ""
+    ) -> str:
+        bits = []
+        if source:
+            bits.append(str(source))
+        st = (state or "").strip()
+        co = (county or "").strip()
+        if st and co:
+            bits.append(f"{st}/{co}")
+        elif st:
+            bits.append(st)
+        elif co:
+            bits.append(co)
+        if page:
+            bits.append(f"p{page}")
+        return " · ".join(bits) if bits else ""
 
     @staticmethod
     def _as_url_set(urls: Optional[Set[str]]) -> LockedURLSet:

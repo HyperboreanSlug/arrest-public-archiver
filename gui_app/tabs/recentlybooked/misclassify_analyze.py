@@ -5,6 +5,7 @@ import threading
 
 from gui_app.shared.record_sidebar import race_manual_override
 from gui_app.widgets import tree_row_bind, tree_rows_reset
+from scraper.charge_summary import summarize_charge
 from scraper.searcher import ArrestSearcher
 
 from .constants import _RB_SOURCE_OPTIONS
@@ -87,7 +88,7 @@ class RbMisclassifyAnalyzeMixin:
                             mc.expected_race,
                             mc.likely_ethnicity,
                             f"{mc.confidence:.2f}",
-                            (rec.get("charge_description") or "")[:36],
+                            summarize_charge(rec),
                             rec.get("state") or "",
                         ),
                     )

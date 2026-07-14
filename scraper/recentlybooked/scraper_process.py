@@ -34,7 +34,12 @@ class RecentlyBookedProcessMixin:
             if import_details or with_html:
                 detail_html = http.get(str(record["source_url"]))
                 if import_details:
-                    record.update(parse_detail(detail_html, str(record["source_url"])))
+                    parsed = parse_detail(detail_html, str(record["source_url"]))
+                    # Prefer non-empty detail values; do not wipe card photo_url.
+                    for key, val in parsed.items():
+                        if val is None or val == "":
+                            continue
+                        record[key] = val
                 if with_html:
                     html_path = archive_html(detail_html, record)
                     if html_path:
@@ -59,37 +64,56 @@ class RecentlyBookedProcessMixin:
         progress_cb,
         record_cb,
         records: List[Dict[str, Any]],
+        scrape_loc: str = "",
+        progress_context: Optional[Dict[str, Any]] = None,
     ) -> None:
+        from ..client_pool import ClientPool
+
         lock = threading.Lock()
+        workers = max(1, int(workers or 1))
+        # One client per worker: delay is paced on that client's timeline
+        # (per-thread), not as a global inter-request gate.
+        pool_clients = ClientPool(
+            lambda: RecentlyBookedClient(delay=self.delay), workers
+        )
 
         def job(card: Dict[str, Any]) -> Dict[str, Any]:
             if self._cancelled(cancel_check):
                 return dict(card)
-            with RecentlyBookedClient(delay=self.delay) as http:
-                return self._process_record(
+            http = pool_clients.borrow()
+            try:
+                done = self._process_record(
                     dict(card),
                     import_details=True,
                     with_photos=with_photos,
                     with_html=with_html,
                     client=http,
                 )
+                if scrape_loc:
+                    done["_scrape_loc"] = scrape_loc
+                return done
+            finally:
+                pool_clients.release(http)
 
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = [pool.submit(job, card) for card in cards]
-            for fut in as_completed(futures):
-                if self._cancelled(cancel_check):
-                    for pending in futures:
-                        pending.cancel()
-                    break
-                try:
-                    done = fut.result()
-                except Exception as exc:
-                    done = {"scrape_error": f"{type(exc).__name__}: {exc}"}
-                with lock:
-                    records.append(done)
-                    count = len(records)
-                self._emit(record_cb, done, count)
-                self._report(progress_cb, count)
+        try:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = [pool.submit(job, card) for card in cards]
+                for fut in as_completed(futures):
+                    if self._cancelled(cancel_check):
+                        for pending in futures:
+                            pending.cancel()
+                        break
+                    try:
+                        done = fut.result()
+                    except Exception as exc:
+                        done = {"scrape_error": f"{type(exc).__name__}: {exc}"}
+                    with lock:
+                        records.append(done)
+                        count = len(records)
+                    self._emit(record_cb, done, count)
+                    self._report(progress_cb, count, progress_context)
+        finally:
+            pool_clients.close()
 
     def _scrape_counties_parallel(
         self,
@@ -123,6 +147,14 @@ class RecentlyBookedProcessMixin:
             if self._cancelled(cancel_check):
                 return
             state, county = pair
+            loc = self._loc_label(
+                state=state, county=county, source="recentlybooked"
+            )
+            self._report(
+                progress_cb,
+                total,
+                {"state": state, "county": county, "label": loc},
+            )
             with RecentlyBookedScraper(delay=self.delay) as local:
                 local.scrape_county(
                     state, county, max_pages=max_pages,

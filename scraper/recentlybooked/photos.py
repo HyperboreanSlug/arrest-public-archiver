@@ -106,11 +106,22 @@ def download_photo(
     per process, and the same destination path is never written concurrently.
     """
     photo_url = str(record.get("photo_url") or "").strip()
-    state = str(record.get("state") or "").lower()
-    county = str(record.get("county") or "").lower()
-    booking_id = str(record.get("booking_id") or record.get("source_id") or "").strip()
-    if not photo_url or not state or not county or not booking_id:
+    if not photo_url:
         return None
+    state = str(record.get("state") or "xx").lower() or "xx"
+    county = str(record.get("county") or "unknown").lower() or "unknown"
+    booking_id = str(
+        record.get("booking_id") or record.get("source_id") or ""
+    ).strip()
+    if not booking_id:
+        # Derive a stable file id from the URL path when booking_id is empty.
+        from urllib.parse import urlparse
+        import re
+
+        slug = urlparse(str(record.get("source_url") or photo_url)).path.rstrip(
+            "/"
+        ).rsplit("/", 1)[-1]
+        booking_id = re.sub(r"[^\w.-]+", "_", slug)[:80] or "unknown"
     if is_placeholder_photo_url(photo_url) or _should_skip_url(photo_url):
         _mark_skip(photo_url)
         return None

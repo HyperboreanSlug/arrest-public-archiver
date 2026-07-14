@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from typing import Optional, Tuple
 
@@ -17,7 +18,7 @@ _UA = (
 
 
 class MugshotsComClient:
-    """Rate-limited requests client for mugshots.com."""
+    """Rate-limited client; ``delay`` is paced per client instance (per-thread)."""
 
     def __init__(
         self,
@@ -37,11 +38,15 @@ class MugshotsComClient:
             }
         )
         self._last_request_at: Optional[float] = None
+        self._pace_lock = threading.Lock()
 
     def _wait(self) -> None:
-        if self._last_request_at is None:
+        with self._pace_lock:
+            last = self._last_request_at
+            delay = self.delay
+        if last is None:
             return
-        remaining = self.delay - (time.monotonic() - self._last_request_at)
+        remaining = delay - (time.monotonic() - last)
         if remaining > 0:
             time.sleep(remaining)
 
@@ -61,7 +66,8 @@ class MugshotsComClient:
                 response = self.session.get(
                     url, timeout=_TIMEOUT, headers=headers, allow_redirects=True
                 )
-                self._last_request_at = time.monotonic()
+                with self._pace_lock:
+                    self._last_request_at = time.monotonic()
                 if response.status_code in (408, 429, 500, 502, 503, 504):
                     last_error = requests.HTTPError(
                         f"{response.status_code} for {url}", response=response

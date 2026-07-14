@@ -97,20 +97,18 @@ def parse_detail(html: str, source_url: str) -> Dict[str, Any]:
         "source_system": "recentlybooked",
     }
     if match:
-        record.update(
-            {
-                "state": match.group(1).upper(),
-                "county": match.group(2).lower(),
-                "source_id": match.group(3),
-                "facility": match.group(4),
-                "booking_id": match.group(5) or None,
-                "photo_url": (
-                    f"{BASE_URL}/images/{match.group(4)}/{match.group(5)}.webp"
-                    if match.group(5)
-                    else None
-                ),
-            }
-        )
+        record["state"] = match.group(1).upper()
+        record["county"] = match.group(2).lower()
+        record["source_id"] = match.group(3)
+        record["facility"] = match.group(4)
+        bid = (match.group(5) or "").strip()
+        if bid:
+            record["booking_id"] = bid
+            # Only set constructed photo_url when we have a real booking id;
+            # never write None (would wipe a listing-card photo_url on merge).
+            record["photo_url"] = (
+                f"{BASE_URL}/images/{match.group(4)}/{bid}.webp"
+            )
     soup = BeautifulSoup(html, "html.parser")
     name = _text(soup.select_one(".mugshot-name, .mugshot-title, h1"))
     record.update(_name_parts(name))
@@ -121,6 +119,6 @@ def parse_detail(html: str, source_url: str) -> Dict[str, Any]:
     image = soup.select_one(
         "img.mugshot-image[src], .mugshot-detail img[src], .hero-image img[src]"
     )
-    if image:
+    if image and image.get("src"):
         record["photo_url"] = urljoin(source_url, str(image.get("src")))
     return record

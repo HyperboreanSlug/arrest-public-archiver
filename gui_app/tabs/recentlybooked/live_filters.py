@@ -33,7 +33,7 @@ class RbLiveFiltersMixin:
             text=f"Live feed: {shown}/{total} shown ({mode}, {src_bit})."
         )
         if log:
-            self.log(f"Live feed filter: {mode} · {src_bit} ({shown}/{total}).")
+            self.log_live(f"Live feed filter: {mode} · {src_bit} ({shown}/{total}).")
 
     def _rb_live_on_race_filter_toggle(self):
         self._rb_rebuild_live_tree()

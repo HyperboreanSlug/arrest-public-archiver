@@ -66,6 +66,17 @@ class RecentlyBookedScrapeMixin:
             if page_url in visited_pages:
                 break
             visited_pages.add(page_url)
+            loc = self._loc_label(
+                state=state, county=county, page=page, source="recentlybooked"
+            )
+            ctx = {
+                "state": state,
+                "county": county,
+                "page": page,
+                "source": "recentlybooked",
+                "label": loc,
+            }
+            self._report(progress_cb, len(records), ctx)
             cards = parse_county_cards(self.client.get(page_url))
             if not cards:
                 break
@@ -73,7 +84,6 @@ class RecentlyBookedScrapeMixin:
             if prev_page_urls is not None and page_urls == prev_page_urls:
                 break
             prev_page_urls = page_urls
-            self._report(progress_cb, len(records))
             fresh: List[Dict[str, Any]] = []
             for card in cards:
                 if self._cancelled(cancel_check):
@@ -82,6 +92,8 @@ class RecentlyBookedScrapeMixin:
                 if source_url in known_urls:
                     continue
                 known_urls.add(source_url)
+                card = dict(card)
+                card["_scrape_loc"] = loc
                 fresh.append(card)
             # No new detail URLs on this listing page → stop pagination.
             if not fresh:
@@ -94,14 +106,16 @@ class RecentlyBookedScrapeMixin:
                         card, import_details=True,
                         with_photos=with_photos, with_html=with_html,
                     )
+                    done["_scrape_loc"] = loc
                     records.append(done)
                     self._emit(record_cb, done, len(records))
-                    self._report(progress_cb, len(records))
+                    self._report(progress_cb, len(records), ctx)
             else:
                 self._process_cards_parallel(
                     fresh, workers=workers, with_photos=with_photos,
                     with_html=with_html, cancel_check=cancel_check,
                     progress_cb=progress_cb, record_cb=record_cb, records=records,
+                    scrape_loc=loc, progress_context=ctx,
                 )
             page += 1
         return records
@@ -180,6 +194,14 @@ class RecentlyBookedScrapeMixin:
         for state, county in counties:
             if self._cancelled(cancel_check):
                 break
+            loc = self._loc_label(
+                state=state, county=county, source="recentlybooked"
+            )
+            self._report(
+                progress_cb,
+                total,
+                {"state": state, "county": county, "label": loc},
+            )
             self.scrape_county(
                 state, county, max_pages=max_pages, skip_existing_urls=known_urls,
                 with_photos=with_photos, with_html=with_html,

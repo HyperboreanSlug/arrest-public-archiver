@@ -14,6 +14,7 @@ from gui_app.widgets import (
     tree_row_bind,
     tree_selected_record,
 )
+from scraper.charge_summary import summarize_charge
 from scraper.searcher import ArrestSearcher, _is_compatible, format_race_label
 
 from .constants import _RB_COLS, _RB_WIDTHS
@@ -53,7 +54,7 @@ class RbCommonMixin:
             format_race_label(record.get("race") or ""),
             record.get("state") or "",
             record.get("county") or "",
-            (record.get("charge_description") or "")[:40],
+            summarize_charge(record),
             self._rb_hint(record, eth),
         )
 

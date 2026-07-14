@@ -36,13 +36,14 @@ class RbFullScrapeWorkerMixin:
                             source_system=sid
                         )
                         if purged:
-                            self.log(
+                            self.log_full(
                                 f"Full scrape: deleted {purged} "
                                 f"{sid} arrests without a real photo."
                             )
                     except Exception as exc:
-                        self.log(f"Full scrape purge ({sid}) skipped: {exc}")
+                        self.log_full(f"Full scrape purge ({sid}) skipped: {exc}")
                 known = db.existing_source_urls()
+                self._rb_full_last_loc = ""
 
                 def on_record(rec: Dict[str, Any], n: int) -> None:
                     row = dict(rec)
@@ -50,33 +51,45 @@ class RbFullScrapeWorkerMixin:
                     if err:
                         self.after(
                             0,
-                            lambda e=err, u=str(row.get("source_url") or ""): self.log(
+                            lambda e=err, u=str(row.get("source_url") or ""): self.log_full(
                                 f"{source_label} store failed ({u}): {e}"
                             ),
                         )
+                    loc = str(row.get("_scrape_loc") or "")
                     self.after(
                         0,
-                        lambda r=row, nn=n: self._rb_full_ui_append(
+                        lambda r=row, nn=n, lc=loc: self._rb_full_ui_append(
                             r,
                             eth=eth,
                             n=nn,
                             counters=counters,
                             workers=workers,
                             source_label=source_label,
+                            scrape_loc=lc,
                         ),
                     )
 
                 _prog_t = [0.0]
 
-                def on_progress(count, _total=None):
+                def on_progress(count, _total=None, context=None):
                     now = _time.time()
-                    if now - _prog_t[0] < 3.0:
+                    # Always refresh status when location changes; else throttle logs.
+                    loc = ""
+                    if isinstance(context, dict):
+                        loc = str(context.get("label") or "")
+                    force = bool(loc and loc != getattr(self, "_rb_full_last_loc", ""))
+                    if not force and now - _prog_t[0] < 2.0:
                         return
                     _prog_t[0] = now
+                    ctx = dict(context) if isinstance(context, dict) else None
                     self.after(
                         0,
-                        lambda c=count: self.log(
-                            f"{source_label}: working… {c} record(s) fetched"
+                        lambda c=count, cx=ctx: self._rb_full_set_progress(
+                            source_label=source_label,
+                            count=c,
+                            workers=workers,
+                            counters=counters,
+                            context=cx,
                         ),
                     )
 
@@ -97,7 +110,7 @@ class RbFullScrapeWorkerMixin:
                     )
                 except Exception as scrape_exc:
                     scrape_warning = self._rb_full_scrape_error_msg(scrape_exc)
-                    self.log(
+                    self.log_full(
                         f"{source_label}: scrape interrupted ({scrape_warning}). "
                         f"Keeping {counters['imported']} imported so far."
                     )
@@ -116,11 +129,11 @@ class RbFullScrapeWorkerMixin:
                         )
                     _removed = int(dret.get("deleted") or 0)
                     if _removed:
-                        self.log(
+                        self.log_full(
                             f"Full scrape dedupe: removed {_removed} duplicate row(s)."
                         )
                 except Exception as exc:
-                    self.log(f"Full scrape dedupe skipped: {exc}")
+                    self.log_full(f"Full scrape dedupe skipped: {exc}")
             finally:
                 db.close()
 
@@ -132,11 +145,11 @@ class RbFullScrapeWorkerMixin:
             )
             if scrape_warning:
                 msg += f" · interrupted: {scrape_warning}"
-            self.log(msg)
+            self.log_full(msg)
             self.after(0, lambda: self.rb_full_status.configure(text=msg))
             self.after(0, self._refresh_db_status)
         except Exception as e:
-            self.log(f"{source_label} scrape failed: {e}")
+            self.log_full(f"{source_label} scrape failed: {e}")
             self.after(
                 0,
                 lambda: self.rb_full_status.configure(text=f"Failed: {e}"),

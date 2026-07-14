@@ -94,8 +94,8 @@ class RbLiveMixin:
 
     def _rb_live_on_auto_toggle(self):
         if self.rb_live_auto_var.get():
-            self.log("Live feed: auto-update on.")
+            self.log_live("Live feed: auto-update on.")
             if not self._rb_live_busy:
                 self._rb_refresh(True)
         else:
-            self.log("Live feed: auto-update off.")
+            self.log_live("Live feed: auto-update off.")

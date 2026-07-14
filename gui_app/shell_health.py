@@ -35,7 +35,12 @@ class SourceHealthMixin:
                 self._rb_live_refresh_source_status_ui()
             except Exception:
                 pass
-        self.log("Probing mugshot sources…")
+        # Shared by Live Feed + Full Scrape source UI — both channels.
+        if hasattr(self, "log_live"):
+            self.log_live("Probing mugshot sources…")
+            self.log_full("Probing mugshot sources…")
+        else:
+            self.log("Probing mugshot sources…")
 
         def work() -> None:
             try:
@@ -68,13 +73,24 @@ class SourceHealthMixin:
                     for sid, r in result.items()
                     if r.get("status") != "online"
                 ]
-                self.log(
+                health_msg = (
                     f"Source health: {len(online)} online"
                     + (f" — {', '.join(online)}" if online else "")
                     + "."
                 )
-                if offline:
-                    self.log("Offline: " + "; ".join(offline[:6]))
+                off_msg = (
+                    ("Offline: " + "; ".join(offline[:6])) if offline else ""
+                )
+                if hasattr(self, "log_live"):
+                    self.log_live(health_msg)
+                    self.log_full(health_msg)
+                    if off_msg:
+                        self.log_live(off_msg)
+                        self.log_full(off_msg)
+                else:
+                    self.log(health_msg)
+                    if off_msg:
+                        self.log(off_msg)
                 if hasattr(self, "_rb_live_refresh_source_status_ui"):
                     try:
                         self._rb_live_refresh_source_status_ui()

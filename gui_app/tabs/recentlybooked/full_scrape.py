@@ -29,7 +29,7 @@ class RbFullScrapeMixin:
             text=f"Full scrape: {shown}/{total} shown ({mode})."
         )
         if log:
-            self.log(f"Full scrape filter: {mode} ({shown}/{total}).")
+            self.log_full(f"Full scrape filter: {mode} ({shown}/{total}).")
 
     def _rb_full_on_race_filter_toggle(self):
         self._rb_rebuild_full_tree()

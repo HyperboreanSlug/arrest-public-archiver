@@ -53,12 +53,18 @@ class RecentlyBookedTabMixin(
             segmented_button_selected_color=C["accent_dim"],
         )
         view.pack(fill="both", expand=True, padx=6, pady=6)
-        host = LazyTabHost(view)
+        host = LazyTabHost(view, on_change=self._on_log_context_change)
+        self._rb_tab_host = host
         host.register("Live Feed", self._build_rb_live)
         host.register("Misclassify", self._build_rb_misclassify)
         host.register("Full Scrape", self._build_rb_full)
         view.set("Live Feed")
         host.ensure("Live Feed")
+        # Show Live Feed channel when entering RecentlyBooked.
+        try:
+            self._on_log_context_change("Live Feed")
+        except Exception:
+            pass
         return host
 
 

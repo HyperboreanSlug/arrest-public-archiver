@@ -102,7 +102,7 @@ class RbFullScrapeBuildMixin:
 
         self.rb_full_status = ctk.CTkLabel(
             bar,
-            text="Multi-thread counties; set Threads + Delay per request.",
+            text="Multi-thread counties; Delay is per thread (each worker paces itself).",
             font=FONT_SM,
             text_color=C["muted"],
             anchor="w",

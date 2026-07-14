@@ -14,7 +14,7 @@ from gui_app.widgets import (
     _tree_frame,
     tree_selected_record,
 )
-from scraper.charge_classifications import category_label
+from scraper.charge_summary import summarize_charge
 from scraper.database import Database
 from scraper.searcher import ethnicity_review_verdict, format_race_label
 
@@ -143,7 +143,7 @@ class MisclassifyBuildMixin:
             format_race_label(record.get("race") or ""),
             record.get("likely_ethnicity") or "—",
             self._browse_review_label(record),
-            category_label(record.get("charge_category") or "") or "—",
+            summarize_charge(record),
             record.get("state") or "—",
             record.get("arrest_date") or record.get("booking_date") or "—",
             record.get("source_system") or "—",

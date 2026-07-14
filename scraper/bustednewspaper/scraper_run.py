@@ -59,6 +59,22 @@ class BustedNewspaperScraperRun:
             if list_url in visited_pages:
                 break
             visited_pages.add(list_url)
+            loc = f"bustednewspaper · {state}/{county} · p{page}"
+            if progress_cb:
+                try:
+                    progress_cb(
+                        len(records),
+                        row_limit or None,
+                        {
+                            "state": state,
+                            "county": county,
+                            "page": page,
+                            "source": "bustednewspaper",
+                            "label": loc,
+                        },
+                    )
+                except TypeError:
+                    progress_cb(len(records), row_limit or None)
             try:
                 html = self.client.get(
                     list_url,
@@ -90,12 +106,28 @@ class BustedNewspaperScraperRun:
                     continue
                 known.add(source_url)
                 fresh += 1
-                done = self._enrich_record(dict(card), with_photos=with_photos)
+                card = dict(card)
+                card["_scrape_loc"] = loc
+                done = self._enrich_record(card, with_photos=with_photos)
+                done["_scrape_loc"] = loc
                 records.append(done)
                 if record_cb:
                     record_cb(done, len(records))
                 if progress_cb:
-                    progress_cb(len(records), row_limit or None)
+                    try:
+                        progress_cb(
+                            len(records),
+                            row_limit or None,
+                            {
+                                "state": state,
+                                "county": county,
+                                "page": page,
+                                "source": "bustednewspaper",
+                                "label": loc,
+                            },
+                        )
+                    except TypeError:
+                        progress_cb(len(records), row_limit or None)
             # Entire listing page already known → stop (avoid re-walking).
             if fresh == 0:
                 break

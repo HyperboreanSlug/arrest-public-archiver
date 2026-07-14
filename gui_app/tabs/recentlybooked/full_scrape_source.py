@@ -108,11 +108,14 @@ class RbFullScrapeSourceMixin:
                 placeholder_text="County (e.g. Alachua-County-FL)"
             )
             self.rb_full_status.configure(
-                text="Mugshots.com: US-States county pages; Threads = workers per county."
+                text=(
+                    "Mugshots.com: US-States county pages; "
+                    "Threads = workers; Delay = per worker."
+                )
             )
         else:
             self.rb_state.configure(placeholder_text="State (e.g. nj)")
             self.rb_county.configure(placeholder_text="County slug (optional)")
             self.rb_full_status.configure(
-                text="Multi-thread counties; set Threads + Delay per request."
+                text="Multi-thread counties; Delay is per thread (each worker paces itself)."
             )

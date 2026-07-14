@@ -180,7 +180,7 @@ class RbLiveSourcesMixin:
                 online = sum(
                     1 for r in result.values() if r.get("status") == "online"
                 )
-                self.log(f"Source health: {online}/{len(result)} online.")
+                self.log_live(f"Source health: {online}/{len(result)} online.")
 
             try:
                 self.after(0, apply)

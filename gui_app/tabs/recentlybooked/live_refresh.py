@@ -21,7 +21,7 @@ class RbLiveRefreshMixin:
             text="Updating…" if incremental else "Refreshing…"
         )
         if not incremental:
-            self.log(f"Live feed: fetching ({', '.join(sources)})…")
+            self.log_live(f"Live feed: fetching ({', '.join(sources)})…")
             self._rb_live_all = []
             self._rb_records = []
             self.rb_tree.delete(*self.rb_tree.get_children())
@@ -59,7 +59,7 @@ class RbLiveRefreshMixin:
                     ),
                 )
             except Exception as e:
-                self.log(f"Live feed failed: {e}")
+                self.log_live(f"Live feed failed: {e}")
                 self.after(
                     0,
                     lambda: self.rb_live_status.configure(text=f"Failed: {e}"),
@@ -112,5 +112,5 @@ class RbLiveRefreshMixin:
         if errors:
             msg += f" · errors: {'; '.join(errors)}"
         self.rb_live_status.configure(text=msg)
-        self.log(msg)
+        self.log_live(msg)
         self._refresh_db_status()

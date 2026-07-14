@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from typing import Optional
 
@@ -11,7 +12,7 @@ from ..config import DEFAULT_DELAY, MAX_RETRIES, REQUEST_TIMEOUT, USER_AGENT
 
 
 class RecentlyBookedClient:
-    """Small retrying client which spaces requests by at least ``delay`` seconds."""
+    """Spaces this client's requests by at least ``delay`` seconds (per-thread)."""
 
     def __init__(
         self,
@@ -28,11 +29,15 @@ class RecentlyBookedClient:
             }
         )
         self._last_request_at: Optional[float] = None
+        self._pace_lock = threading.Lock()
 
     def _wait_for_rate_limit(self) -> None:
-        if self._last_request_at is None:
+        with self._pace_lock:
+            last = self._last_request_at
+            delay = self.delay
+        if last is None:
             return
-        remaining = self.delay - (time.monotonic() - self._last_request_at)
+        remaining = delay - (time.monotonic() - last)
         if remaining > 0:
             time.sleep(remaining)
 
@@ -51,7 +56,8 @@ class RecentlyBookedClient:
             self._wait_for_rate_limit()
             try:
                 response = self.session.get(url, timeout=REQUEST_TIMEOUT)
-                self._last_request_at = time.monotonic()
+                with self._pace_lock:
+                    self._last_request_at = time.monotonic()
                 response.raise_for_status()
                 # Prefer UTF-8 when the body starts with a UTF-8 BOM or XML decl.
                 raw = response.content[:4]

@@ -14,7 +14,7 @@ class RbFullScrapeRunMixin:
         scrape_all = bool(self.rb_all.get())
         source_id = self._rb_full_source_id()
         if not scrape_all and not state:
-            self.log("Enter a state or enable All states.")
+            self.log_full("Enter a state or enable All states.")
             return
 
         db_path = self.db_path
@@ -28,7 +28,7 @@ class RbFullScrapeRunMixin:
             workers = int(self.app_settings.get("rb_threads") or 10)
         if source_id == "bustednewspaper":
             workers = 1
-            self.log(_BN_UNAVAILABLE_HINT)
+            self.log_full(_BN_UNAVAILABLE_HINT)
             self.rb_full_status.configure(text=_BN_UNAVAILABLE_HINT)
         self.app_settings["rb_delay"] = delay
         self.app_settings["rb_threads"] = workers
@@ -54,11 +54,14 @@ class RbFullScrapeRunMixin:
         self.rb_full_tree.delete(*self.rb_full_tree.get_children())
         self.rb_full_sidebar.clear("Scraping…")
         self.rb_full_status.configure(
-            text=f"Starting {source_label} ({workers} threads, delay {delay}s)…"
+            text=(
+                f"Starting {source_label} "
+                f"({workers} threads, {delay}s delay/thread)…"
+            )
         )
-        self.log(
+        self.log_full(
             f"{source_label} full scrape started "
-            f"({workers} threads, delay {delay}s)…"
+            f"({workers} threads, {delay}s delay per thread)…"
         )
 
         cfg = dict(

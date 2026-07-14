@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from scraper.charge_rules import _COMPILED
+from scraper.charge_summary import summarize_charge
 
 # Stable keys used in CLI/GUI filters (order is display order)
 CHARGE_CATEGORIES: List[Tuple[str, str]] = [
@@ -87,6 +88,11 @@ def classify_record(record: Dict[str, Any]) -> str:
         # re-classify blank/unknown; keep known only if reclass is other? Always reclassify for consistency
         pass
     record["charge_category"] = cat
+    # Short display title for misclassify / browse tables
+    try:
+        record["charge_summary"] = summarize_charge(record)
+    except Exception:
+        record["charge_summary"] = ""
     return cat
 
 

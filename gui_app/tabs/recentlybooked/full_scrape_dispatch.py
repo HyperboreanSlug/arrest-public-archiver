@@ -49,14 +49,14 @@ class RbFullScrapeDispatchMixin:
                 progress_cb=on_progress,
             )
             for sid, err in (multi.errors or {}).items():
-                self.log(f"Full scrape {sid}: {err}")
+                self.log_full(f"Full scrape {sid}: {err}")
             if multi.skipped_identity:
-                self.log(
+                self.log_full(
                     f"Full scrape: skipped {multi.skipped_identity} "
                     "cross-host identity duplicate(s)."
                 )
             for sid, n in (multi.by_source or {}).items():
-                self.log(f"Full scrape {sid}: {n} callback(s).")
+                self.log_full(f"Full scrape {sid}: {n} callback(s).")
         elif source_id == "bustednewspaper":
             from scraper.bustednewspaper import BustedNewspaperScraper
 
