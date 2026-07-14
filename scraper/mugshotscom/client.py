@@ -1,0 +1,94 @@
+"""Polite HTTP client for mugshots.com public pages."""
+
+from __future__ import annotations
+
+import time
+from typing import Optional, Tuple
+
+import requests
+
+from ..config import DEFAULT_DELAY, MAX_RETRIES, REQUEST_TIMEOUT, USER_AGENT
+
+_TIMEOUT: Tuple[float, float] = (12.0, float(max(45, int(REQUEST_TIMEOUT))))
+_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
+
+
+class MugshotsComClient:
+    """Rate-limited requests client for mugshots.com."""
+
+    def __init__(
+        self,
+        delay: float = DEFAULT_DELAY,
+        session: Optional[requests.Session] = None,
+    ) -> None:
+        self.delay = max(0.0, float(delay))
+        self.session = session or requests.Session()
+        self.session.headers.update(
+            {
+                "User-Agent": _UA,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate",
+                "Connection": "close",
+                "X-Research-Client": USER_AGENT[:80],
+            }
+        )
+        self._last_request_at: Optional[float] = None
+
+    def _wait(self) -> None:
+        if self._last_request_at is None:
+            return
+        remaining = self.delay - (time.monotonic() - self._last_request_at)
+        if remaining > 0:
+            time.sleep(remaining)
+
+    def get(self, url: str, *, referer: Optional[str] = None) -> str:
+        return self._request(url, referer=referer).text
+
+    def get_bytes(self, url: str, *, referer: Optional[str] = None) -> bytes:
+        return self._request(url, referer=referer).content
+
+    def _request(self, url: str, *, referer: Optional[str] = None) -> requests.Response:
+        last_error: Optional[BaseException] = None
+        headers = {"Referer": referer or "https://mugshots.com/"}
+        retries = max(3, int(MAX_RETRIES))
+        for attempt in range(retries):
+            self._wait()
+            try:
+                response = self.session.get(
+                    url, timeout=_TIMEOUT, headers=headers, allow_redirects=True
+                )
+                self._last_request_at = time.monotonic()
+                if response.status_code in (408, 429, 500, 502, 503, 504):
+                    last_error = requests.HTTPError(
+                        f"{response.status_code} for {url}", response=response
+                    )
+                    if attempt + 1 >= retries:
+                        response.raise_for_status()
+                    time.sleep(self.delay * (attempt + 1))
+                    continue
+                response.raise_for_status()
+                return response
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt + 1 >= retries:
+                    raise
+                time.sleep(self.delay * (attempt + 1))
+        if last_error:
+            raise last_error
+        raise RuntimeError(f"mugshots.com request failed: {url}")
+
+    def close(self) -> None:
+        try:
+            self.session.close()
+        except Exception:
+            pass
+
+    def __enter__(self) -> "MugshotsComClient":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self.close()

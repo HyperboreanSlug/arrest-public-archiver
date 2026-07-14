@@ -1,0 +1,71 @@
+"""Race alias tables for canonical race key normalization."""
+from __future__ import annotations
+
+_ETHNICITY_COMPATIBLE_RACES = {
+    "hispanic": {
+        "HISPANIC", "LATINO", "LATINA", "LATINX", "H",
+        "WHITE HISPANIC", "HISPANIC OR LATINO", "LATINO OR HISPANIC",
+    },
+    "asian": {
+        "ASIAN", "ASIAN / PACIFIC ISLANDER", "ASIAN/PACIFIC ISLANDER",
+        "PACIFIC ISLANDER", "A", "API", "CHINESE", "KOREAN", "JAPANESE",
+        "VIETNAMESE", "FILIPINO", "OTHER ASIAN",
+    },
+    "indian": {
+        "ASIAN", "ASIAN / PACIFIC ISLANDER", "ASIAN/PACIFIC ISLANDER",
+        "ASIAN INDIAN", "EAST INDIAN", "INDIAN", "SOUTH ASIAN",
+        "A", "API", "OTHER", "OTHER ASIAN", "UNKNOWN", "U",
+    },
+    "african_american": {
+        "BLACK", "AFRICAN AMERICAN", "AFRICAN-AMERICAN", "B",
+        "BLACK OR AFRICAN AMERICAN",
+    },
+    "native_american": {
+        "NATIVE AMERICAN", "AMERICAN INDIAN",
+        "AMERICAN INDIAN OR ALASKA NATIVE", "ALASKA NATIVE", "I", "NATIVE",
+    },
+    "arabic": {"WHITE", "OTHER", "MIDDLE EASTERN", "ARAB", "W"},
+    # Anglo / European surnames are common among Black Americans (not a
+    # race misclassification). Do not flag race=Black as "should be White".
+    "jewish": {"WHITE", "OTHER", "BLACK", "W", "B"},
+    "portuguese": {"WHITE", "HISPANIC", "OTHER", "BLACK", "W", "B"},
+    "european": {"WHITE", "CAUCASIAN", "BLACK", "W", "B"},
+    "african": {
+        "BLACK", "AFRICAN AMERICAN", "AFRICAN-AMERICAN", "B",
+        "BLACK OR AFRICAN AMERICAN",
+    },
+}
+
+_RACE_ALIASES = {
+    "W": "WHITE", "CAUCASIAN": "WHITE", "CAUCASION": "WHITE", "WHITE": "WHITE",
+    "WHITE OR CAUCASIAN": "WHITE", "CAUCASIAN OR WHITE": "WHITE",
+    "B": "BLACK", "BLACK": "BLACK", "AFRICAN AMERICAN": "BLACK",
+    "AFRICAN-AMERICAN": "BLACK", "BLACK OR AFRICAN AMERICAN": "BLACK",
+    "BLACK/AFRICAN AMERICAN": "BLACK", "BLACK AFRICAN AMERICAN": "BLACK",
+    "H": "HISPANIC", "L": "HISPANIC", "LATINO": "HISPANIC", "LATINA": "HISPANIC",
+    "LATINX": "HISPANIC", "HISPANIC": "HISPANIC",
+    "HISPANIC OR LATINO": "HISPANIC", "LATINO OR HISPANIC": "HISPANIC",
+    "HISPANIC/LATINO": "HISPANIC", "LATINO/HISPANIC": "HISPANIC",
+    "A": "ASIAN", "API": "ASIAN", "ASIAN": "ASIAN",
+    "U": "UNKNOWN", "UNK": "UNKNOWN", "UNKNOWN": "UNKNOWN",
+    "N/A": "UNKNOWN", "NA": "UNKNOWN", "NONE": "UNKNOWN", "NULL": "UNKNOWN",
+    "": "UNKNOWN",
+    # LAPD descent codes often used in open data
+    "C": "WHITE",
+    "F": "ASIAN",
+    "K": "ASIAN",
+    "J": "ASIAN",
+    "V": "ASIAN",
+    "Z": "ASIAN",
+    "P": "PACIFIC ISLANDER",
+    "I": "NATIVE AMERICAN",
+    "AMERICAN INDIAN": "NATIVE AMERICAN",
+    "AMERICAN INDIAN OR ALASKA": "NATIVE AMERICAN",
+    "AMERICAN INDIAN OR ALASKA NATIVE": "NATIVE AMERICAN",
+    "NATIVE AMERICAN": "NATIVE AMERICAN",
+    "ALASKA NATIVE": "NATIVE AMERICAN",
+    "O": "OTHER",
+    "OTHER": "OTHER",
+    "X": "UNKNOWN",
+    "G": "OTHER",
+}

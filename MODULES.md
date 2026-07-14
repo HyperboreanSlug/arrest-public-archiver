@@ -1,7 +1,9 @@
-# Arrest Public Archiver — Module Map
+# Arrest Public Archiver — Module Map (short)
+
+**Full catalog:** see **[SOURCE.md](SOURCE.md)** (every module, purpose, ≤200-line layout).
 
 **Purpose:** Load only the code relevant to a task.  
-**Status:** Modular redesign (lazy GUI tabs + database package + RecentlyBooked + DeepFace).
+**Rule:** Production `.py` files are **≤200 lines** (except `scraper/database_monolith_backup.py`).
 
 > Do **not** open `*_monolith_backup.py` unless recovering pre-split code.  
 > Ignore `data/`, `__pycache__/`, and live scraped HTML/photos.
@@ -11,56 +13,55 @@
 ## Architecture
 
 ```
-Entry points
-├── gui.py                 # Thin bootstrap → gui_app.shell.ArrestArchiverApp
-├── Launch Arrest Archiver.vbs  # Double-click: no console (calls run_gui.bat)
-├── run_gui.bat            # Core deps + start pythonw gui.py, then exit
-└── python -m scraper      # CLI
+Entry
+├── gui.py → gui_app.shell.ArrestArchiverApp
+├── Launch Arrest Archiver.vbs / run_gui.bat
+└── python -m scraper → scraper.cli.main
 
 gui_app/
-├── theme.py, widgets.py, lazy_tabs.py, paths.py, resize_perf.py
-├── shell.py               # Main window + tab host
-├── shared/detail_drawer.py
+├── shell.py, theme.py, widgets*.py, lazy_tabs.py, paths.py, resize_perf.py
+├── shared/          # record_sidebar*, export_card*
 └── tabs/
-    ├── browse/            # Misclassify, Statistics, Search, Integrity, DeepFace review
-    ├── recentlybooked.py  # Live Feed / Misclassify / Full Scrape
-    ├── deepface.py        # Scan + Setup
-    ├── scrape.py          # Open-data Socrata/direct
+    ├── browse/              # misclassify*, search, statistics, integrity
+    │   └── deepface_reports/  # Browse → DeepFace hit review
+    ├── recentlybooked/      # Live / Misclassify / Full Scrape (multi-host)
+    ├── deepface/            # Scan + Setup
+    ├── scrape.py            # Open-data only
     └── settings.py
 
 scraper/
-├── database/              # SQLite mixins (schema, inserts, queries, dedupe, backup, deepface_scans)
-├── recentlybooked/        # HTML client, catalog, parse, photos, archive_html, scraper
-├── mugshot_ethnicity/     # DeepFace face/race (optional requirements-vision.txt)
-├── searcher.py, ethnic_names.py, charge_classifications.py, normalize.py
-├── config.py, cli.py, app_settings.py
-└── scrapers/              # socrata, direct_download, base
+├── database/          # schema, inserts, queries*, dedupe*, deepface_scans*
+├── mugshot_sources/   # registry + identity + load-balanced orchestrator
+├── recentlybooked/    # RB crawl
+├── mugshotscom/       # mugshots.com crawl
+├── bustednewspaper/   # BN (SSL unavailable; fail-fast)
+├── mugshot_ethnicity/ # DeepFace pipeline (setup*, scanner*, photo_quality*, …)
+├── scrapers/          # Socrata / direct open-data
+├── searcher*.py, ethnic_names*.py, charge_*.py
+├── config*.py, cli*.py, app_settings.py, normalize.py
+└── database_monolith_backup.py   # DO NOT USE in normal work
 ```
 
-## Main lazy tabs
+## Where to open first
 
-| Tab | Role |
-|-----|------|
-| Browse | Surname misclass, stats, search, integrity, DeepFace hit review |
-| RecentlyBooked | Live feed, RB misclass, full-site scrape (HTML + photos) |
-| DeepFace | Mugshot gross-misclass scan + model setup |
-| Scrape | Open-data portals (Socrata / direct CSV) |
-| Settings | DB path, backups, scrape prefs, DeepFace prefs |
+| Task | Modules |
+|------|---------|
+| GUI shell | `gui_app/shell.py` |
+| Browse / stated race | `gui_app/tabs/browse/misclassify*.py` |
+| Live feed / multi-host | `gui_app/tabs/recentlybooked/`, `scraper/mugshot_sources/` |
+| Full scrape load-balance | `mugshot_sources/partition.py`, `balanced.py`, `geo.py` |
+| Surname misclass | `scraper/searcher*.py`, `ethnic_names*.py` |
+| SQLite / dedupe | `scraper/database/` |
+| DeepFace UI | `gui_app/tabs/deepface/` |
+| DeepFace engine | `scraper/mugshot_ethnicity/` |
+| CLI | `scraper/cli.py` + `cli_*.py` |
 
 ## Explicitly not ported from SOR
 
-- NSOPW harvest
-- SOR jurisdiction report fetcher / verdict Reports
-- Cookie jar / CAPTCHA assist
+- NSOPW harvest  
+- SOR jurisdiction report fetcher / verdict Reports  
+- Cookie jar / CAPTCHA assist  
 
-## Review routing
+## Maintenance rule
 
-| Task | Open |
-|------|------|
-| Surname misclass accuracy | `scraper/ethnic_names.py`, `scraper/searcher.py` |
-| Charge filters | `scraper/charge_classifications.py` |
-| DB schema / photos / HTML paths | `scraper/database/` |
-| RecentlyBooked crawl | `scraper/recentlybooked/` |
-| DeepFace scan | `scraper/mugshot_ethnicity/`, `gui_app/tabs/deepface.py` |
-| GUI Browse | `gui_app/tabs/browse/` |
-| CLI | `scraper/cli.py` |
+If a file would exceed **200 lines**, extract a sibling module and keep a thin re-export for stable imports. Update **SOURCE.md** when adding packages.

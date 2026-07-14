@@ -28,10 +28,12 @@ class InsertMixin:
         records: List[Dict[str, Any]],
         *,
         skip_existing_urls: bool = True,
+        skip_identity_duplicates: bool = False,
         require_photo: bool = False,
     ) -> Dict[str, int]:
         from scraper.charge_classifications import classify_record
         from scraper.mugshot_ethnicity.photo_quality import record_has_real_photo
+        from scraper.mugshot_sources import identity_keys_for_record
 
         originals: List[Dict[str, Any]] = [
             r for r in (records or []) if isinstance(r, dict)
@@ -41,27 +43,38 @@ class InsertMixin:
             classify_record(rec)
         total = len(prepared)
         skipped = 0
+        skipped_identity = 0
         rejected_no_photo = 0
         kept_pairs: List[tuple[Dict[str, Any], Dict[str, Any]]] = []
-        if skip_existing_urls:
-            existing = self.existing_source_urls()
-            for original, rec in zip(originals, prepared):
-                url = (rec.get("source_url") or rec.get("source_id") or "").strip()
-                if url and url in existing:
+        existing = self.existing_source_urls() if skip_existing_urls else set()
+        identity_keys: set = set()
+        if skip_identity_duplicates:
+            try:
+                identity_keys = self.existing_identity_keys()
+            except Exception:
+                identity_keys = set()
+
+        for original, rec in zip(originals, prepared):
+            url = (rec.get("source_url") or rec.get("source_id") or "").strip()
+            if skip_existing_urls and url and url in existing:
+                skipped += 1
+                continue
+            if skip_identity_duplicates:
+                keys = identity_keys_for_record(rec)
+                if keys and any(k in identity_keys for k in keys):
+                    skipped_identity += 1
                     skipped += 1
+                    if url:
+                        existing.add(url)
                     continue
-                if require_photo and not record_has_real_photo(rec):
-                    rejected_no_photo += 1
-                    continue
-                if url:
-                    existing.add(url)
-                kept_pairs.append((original, rec))
-        else:
-            for original, rec in zip(originals, prepared):
-                if require_photo and not record_has_real_photo(rec):
-                    rejected_no_photo += 1
-                    continue
-                kept_pairs.append((original, rec))
+            if require_photo and not record_has_real_photo(rec):
+                rejected_no_photo += 1
+                continue
+            if url:
+                existing.add(url)
+            for k in identity_keys_for_record(rec):
+                identity_keys.add(k)
+            kept_pairs.append((original, rec))
 
         imported = 0
         if not kept_pairs:
@@ -84,6 +97,7 @@ class InsertMixin:
         return {
             "imported": imported,
             "skipped": skipped,
+            "skipped_identity": skipped_identity,
             "rejected_no_photo": rejected_no_photo,
             "total_rows": total,
         }
@@ -110,6 +124,8 @@ class InsertMixin:
             rows = self._conn.execute(
                 "SELECT id, photo_path, photo_url FROM arrests"
             ).fetchall()
+        from scraper.mugshot_ethnicity.photo_quality import resolve_photo_path
+
         delete_ids: List[int] = []
         for row in rows:
             rec = dict(row)
@@ -118,12 +134,12 @@ class InsertMixin:
             delete_ids.append(int(rec["id"]))
             path = str(rec.get("photo_path") or "").strip()
             if path:
-                p = Path(path)
-                if p.is_file() and is_placeholder_photo(p):
-                    try:
+                p = resolve_photo_path(path) or Path(path)
+                try:
+                    if p.is_file() and is_placeholder_photo(p):
                         p.unlink()
-                    except OSError:
-                        pass
+                except OSError:
+                    pass
         if not delete_ids:
             return 0
         chunk = 400

@@ -1,0 +1,145 @@
+"""Record enrichment and parallel card/county processing for RecentlyBooked."""
+from __future__ import annotations
+
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Dict, List, Optional
+
+from ..charge_classifications import classify_record
+from .archive_html import archive_html
+from .client import RecentlyBookedClient
+from .locked_set import LockedURLSet
+from .parse import parse_detail
+from .photos import download_photo
+
+CancelCheck = Optional[Any]
+ProgressCallback = Optional[Any]
+RecordCallback = Optional[Any]
+
+
+class RecentlyBookedProcessMixin:
+    """_process_record and parallel helpers."""
+
+    def _process_record(
+        self,
+        record: Dict[str, Any],
+        *,
+        import_details: bool,
+        with_photos: bool,
+        with_html: bool,
+        client: Optional[RecentlyBookedClient] = None,
+    ) -> Dict[str, Any]:
+        http = client or self.client
+        try:
+            if import_details or with_html:
+                detail_html = http.get(str(record["source_url"]))
+                if import_details:
+                    record.update(parse_detail(detail_html, str(record["source_url"])))
+                if with_html:
+                    html_path = archive_html(detail_html, record)
+                    if html_path:
+                        record["html_path"] = str(html_path)
+            if with_photos:
+                photo_path = download_photo(record, http)
+                if photo_path:
+                    record["photo_path"] = str(photo_path)
+            classify_record(record)
+        except Exception as exc:
+            record["scrape_error"] = f"{type(exc).__name__}: {exc}"
+        return record
+
+    def _process_cards_parallel(
+        self,
+        cards: List[Dict[str, Any]],
+        *,
+        workers: int,
+        with_photos: bool,
+        with_html: bool,
+        cancel_check,
+        progress_cb,
+        record_cb,
+        records: List[Dict[str, Any]],
+    ) -> None:
+        lock = threading.Lock()
+
+        def job(card: Dict[str, Any]) -> Dict[str, Any]:
+            if self._cancelled(cancel_check):
+                return dict(card)
+            with RecentlyBookedClient(delay=self.delay) as http:
+                return self._process_record(
+                    dict(card),
+                    import_details=True,
+                    with_photos=with_photos,
+                    with_html=with_html,
+                    client=http,
+                )
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(job, card) for card in cards]
+            for fut in as_completed(futures):
+                if self._cancelled(cancel_check):
+                    for pending in futures:
+                        pending.cancel()
+                    break
+                try:
+                    done = fut.result()
+                except Exception as exc:
+                    done = {"scrape_error": f"{type(exc).__name__}: {exc}"}
+                with lock:
+                    records.append(done)
+                    count = len(records)
+                self._emit(record_cb, done, count)
+                self._report(progress_cb, count)
+
+    def _scrape_counties_parallel(
+        self,
+        counties: List[tuple[str, str]],
+        *,
+        workers: int,
+        max_pages: int,
+        known_urls: LockedURLSet,
+        with_photos: bool,
+        with_html: bool,
+        cancel_check,
+        progress_cb,
+        record_cb,
+    ) -> List[Dict[str, Any]]:
+        from .scraper import RecentlyBookedScraper
+
+        records: List[Dict[str, Any]] = []
+        total = 0
+        lock = threading.Lock()
+
+        def forward(rec: Dict[str, Any], _n: int) -> None:
+            nonlocal total
+            with lock:
+                total += 1
+                count = total
+                records.append(rec)
+            self._emit(record_cb, rec, count)
+            self._report(progress_cb, count)
+
+        def job(pair: tuple[str, str]) -> None:
+            if self._cancelled(cancel_check):
+                return
+            state, county = pair
+            with RecentlyBookedScraper(delay=self.delay) as local:
+                local.scrape_county(
+                    state, county, max_pages=max_pages,
+                    skip_existing_urls=known_urls, with_photos=with_photos,
+                    with_html=with_html, cancel_check=cancel_check,
+                    progress_cb=progress_cb, record_cb=forward, workers=1,
+                )
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(job, pair) for pair in counties]
+            for fut in as_completed(futures):
+                if self._cancelled(cancel_check):
+                    for pending in futures:
+                        pending.cancel()
+                    break
+                try:
+                    fut.result()
+                except Exception:
+                    pass
+        return records

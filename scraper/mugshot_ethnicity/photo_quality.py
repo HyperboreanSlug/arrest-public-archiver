@@ -7,375 +7,54 @@ or waste disk in ``*_assets/``.
 """
 from __future__ import annotations
 
-import hashlib
-import re
-from functools import lru_cache
-from pathlib import Path
-from typing import Any, Mapping, Optional, Sequence, Set, Tuple, Union
-
-# Byte-identical CO "no photo" silhouette (299×289 L JPEG, ~7.2 KB).
-# RecentlyBooked default mugshot stubs (~1–2 KB webp).
-KNOWN_PLACEHOLDER_MD5: Set[str] = {
-    "5030072b8b5ad8f44f389eb77b3d3d70",
-    "8125966493d0b36f032ae9c4d4585210",  # mugshot-placeholder.webp
-    "c3786b41be8d238a5f52136bd876bfa4",  # mugshot-placeholder-female.webp
-    "2344828d8440248c173c9d47c1eb13b0",  # RecentlyBooked "no photo" silhouette (303×250)
-}
-
-# Known site-chrome / stub hashes from archive audits (not real faces).
-KNOWN_CHROME_MD5: Set[str] = {
-    # NV "Seal" img that is actually a 1×1 transparent GIF (~3 KB)
-    "5241a2d8ac75f34e0373765f6249194f",
-    # Tiny multi-state stub 59×78 (~1.6 KB)
-    "0a668c6c65c40b293dff33a81c6849ae",
-    # KS 16×16 icon
-    "3085230ce03a9a93a074669e4c194432",
-    # DE 2-color 59×60 stub
-    "cfe6816b60b267b6734a16f5614d8a41",
-    # MN ultra-wide banner strip (513×61)
-    "8404669e8feb8303f78d34008ab4eab5",
-    # CO banner strip (278×61)
-    "d8c95963fee283a4ad2a87bb1b5620f7",
-}
-
-# Silhouette heuristic thresholds (white bg + dark outline).
-# Real mugshots have a high mid-tone fraction (~0.7+), so the ``_MID_FRAC_MAX``
-# gate keeps this from ever matching a face; the size window only needs to be
-# wide enough to include the tiny "no photo" webp stubs (~1.5–2 KB).
-_WHITE_FRAC_MIN = 0.70
-_BLACK_FRAC_MIN = 0.05
-_MID_FRAC_MAX = 0.10
-_STUB_SIZE_MIN = 800
-_STUB_SIZE_MAX = 25_000
-
-# URL / path tokens that almost never refer to offender mugshots.
-_CHROME_URL_RE = re.compile(
-    r"(?:logo|icon|sprite|pixel|tracking|1x1|spacer|banner|button|"
-    r"header|footer|nav|seal|badge|favicon|clear\.gif|blank\.gif|"
-    r"/offices/|app_themes|webresource\.axd)",
-    re.I,
+from scraper.mugshot_ethnicity.photo_quality_api import (
+    bytes_non_mugshot_reason,
+    clear_placeholder_cache,
+    is_non_mugshot,
+    is_placeholder_photo,
+    non_mugshot_reason,
+    placeholder_reason,
+    record_has_real_photo,
+    resolve_photo_path,
+)
+from scraper.mugshot_ethnicity.photo_quality_hashes import (
+    KNOWN_CHROME_MD5,
+    KNOWN_PLACEHOLDER_MD5,
+    file_md5,
+    is_placeholder_photo_url,
+    md5_bytes,
+    url_looks_like_chrome,
+)
+from scraper.mugshot_ethnicity.photo_quality_heuristics import (
+    geometry_reason as _geometry_reason,
+    heuristic_crimewatch_stock as _heuristic_crimewatch_stock,
+    heuristic_crimewatch_stock_from_rgb as _heuristic_crimewatch_stock_from_rgb,
+    heuristic_silhouette as _heuristic_silhouette,
+    image_dims as _image_dims,
+    dims_from_bytes as _dims_from_bytes,
+    rgb_arrays_from_image as _rgb_arrays_from_image,
 )
 
-
-def file_md5(path: Union[str, Path], *, chunk: int = 1 << 16) -> Optional[str]:
-    """MD5 hex digest of a file, or None if unreadable."""
-    try:
-        p = Path(path)
-        h = hashlib.md5()
-        with p.open("rb") as f:
-            while True:
-                b = f.read(chunk)
-                if not b:
-                    break
-                h.update(b)
-        return h.hexdigest()
-    except OSError:
-        return None
-
-
-def md5_bytes(data: bytes) -> str:
-    return hashlib.md5(data).hexdigest()
-
-
-def url_looks_like_chrome(url: str) -> bool:
-    """True when a remote image URL is almost certainly site chrome."""
-    u = (url or "").strip()
-    if not u:
-        return True
-    low = u.lower()
-    if low.startswith("data:"):
-        return True
-    # RecentlyBooked "no photo on file" stubs
-    if "mugshot-placeholder" in low:
-        return True
-    if _CHROME_URL_RE.search(low):
-        # Dedicated mugshot endpoints still win even if path is noisy
-        if any(
-            k in low
-            for k in (
-                "displayimage",
-                "callimage",
-                "/pictures/",
-                "sorimage",
-                "imgid=",
-                "imageid=",
-                "offender",
-                "mug",
-            )
-        ):
-            # DisplayImage is fine; seal/spacer paths are not
-            if any(k in low for k in ("seal", "spacer", "logo", "1x1", "pixel", "favicon")):
-                return True
-            return False
-        return True
-    return False
-
-
-def is_placeholder_photo_url(url: Optional[str]) -> bool:
-    """True when a photo URL is a known no-photo / chrome stub."""
-    return url_looks_like_chrome(str(url or ""))
-
-
-def record_has_real_photo(record: Optional[Mapping[str, Any]]) -> bool:
-    """True when *record* has a real mugshot file on disk (not missing/placeholder)."""
-    if not record:
-        return False
-    url = str(record.get("photo_url") or "").strip()
-    if url and is_placeholder_photo_url(url):
-        return False
-    path = str(record.get("photo_path") or "").strip()
-    if not path:
-        return False
-    p = Path(path)
-    if not p.is_file():
-        return False
-    return not is_placeholder_photo(p)
-
-
-def _heuristic_silhouette(path: Path) -> bool:
-    """True if image looks like a white-bg black-outline silhouette stub."""
-    try:
-        size = path.stat().st_size
-    except OSError:
-        return False
-    if size < _STUB_SIZE_MIN or size > _STUB_SIZE_MAX:
-        return False
-    try:
-        from PIL import Image
-    except Exception:
-        return False
-    try:
-        with Image.open(path) as im:
-            gray = im.convert("L")
-            gray.thumbnail((160, 160))
-            try:
-                import numpy as np
-
-                arr = np.asarray(gray, dtype=np.uint8)
-                n = float(arr.size) or 1.0
-                white = float((arr > 240).sum()) / n
-                black = float((arr < 40).sum()) / n
-                mid = 1.0 - white - black
-            except Exception:
-                hist = gray.histogram()
-                total = float(sum(hist)) or 1.0
-                white = sum(hist[241:256]) / total
-                black = sum(hist[0:40]) / total
-                mid = 1.0 - white - black
-        return (
-            white >= _WHITE_FRAC_MIN
-            and black >= _BLACK_FRAC_MIN
-            and mid <= _MID_FRAC_MAX
-        )
-    except Exception:
-        return False
-
-
-def _image_dims(path: Path) -> Optional[Tuple[int, int]]:
-    try:
-        from PIL import Image
-
-        with Image.open(path) as im:
-            w, h = im.size
-            return int(w), int(h)
-    except Exception:
-        return None
-
-
-def _dims_from_bytes(data: bytes) -> Optional[Tuple[int, int]]:
-    try:
-        from PIL import Image
-        import io
-
-        with Image.open(io.BytesIO(data)) as im:
-            w, h = im.size
-            return int(w), int(h)
-    except Exception:
-        return None
-
-
-def _geometry_reason(w: int, h: int, size: int, *, ext: str = "") -> Optional[str]:
-    """Classify non-mugshot geometry. Returns reason or None if OK."""
-    if w < 1 or h < 1:
-        return "invalid image dimensions"
-    # Tracking / spacer / seal stubs
-    if min(w, h) <= 2:
-        return "1×1 or spacer pixel"
-    # Tiny icons (not face photos)
-    if min(w, h) < 40 and max(w, h) < 120:
-        return "tiny icon (not a mugshot)"
-    # Ultra-wide banner strips (office headers, nav chrome)
-    ratio = max(w, h) / float(min(w, h))
-    if ratio >= 2.4 and min(w, h) < 120:
-        return "banner / strip chrome"
-    # Small pure-GIF stubs
-    if ext == ".gif" and size < 4_000 and min(w, h) < 80:
-        return "small GIF stub"
-    return None
-
-
-@lru_cache(maxsize=16384)
-def _classify_cached(resolved: str, mtime_ns: int, size: int) -> Optional[str]:
-    """Return reason if non-mugshot / placeholder, else None."""
-    path = Path(resolved)
-    digest = file_md5(path)
-    if digest and digest in KNOWN_PLACEHOLDER_MD5:
-        return "registry silhouette placeholder (known stub)"
-    if digest and digest in KNOWN_CHROME_MD5:
-        return "site chrome (known non-mugshot)"
-    if _heuristic_silhouette(path):
-        return "registry silhouette placeholder (white bg + outline)"
-    dims = _image_dims(path)
-    if dims is None:
-        return None
-    w, h = dims
-    return _geometry_reason(w, h, size, ext=path.suffix.lower())
-
-
-def non_mugshot_reason(path: Union[str, Path, None]) -> Optional[str]:
-    """
-    If *path* is not a usable mugshot (placeholder, 1×1, icon, banner…),
-    return a short reason. Otherwise return None.
-    """
-    if path is None:
-        return None
-    raw = str(path).strip()
-    if not raw:
-        return None
-    p = Path(raw)
-    if not p.is_file():
-        return None
-    try:
-        st = p.stat()
-        resolved = str(p.resolve())
-        return _classify_cached(
-            resolved, int(getattr(st, "st_mtime_ns", 0)), int(st.st_size)
-        )
-    except OSError:
-        return None
-
-
-def is_non_mugshot(path: Union[str, Path, None]) -> bool:
-    """True when the file is chrome / placeholder / not a real mugshot."""
-    return non_mugshot_reason(path) is not None
-
-
-# Back-compat aliases used by scanner / UI
-def placeholder_reason(path: Union[str, Path, None]) -> Optional[str]:
-    """Reason if silhouette placeholder *or* other non-mugshot stub."""
-    return non_mugshot_reason(path)
-
-
-def is_placeholder_photo(path: Union[str, Path, None]) -> bool:
-    """True when the file is a SOR placeholder or other non-mugshot stub."""
-    return is_non_mugshot(path)
-
-
-def bytes_non_mugshot_reason(data: bytes, *, url: str = "", ext: str = "") -> Optional[str]:
-    """
-    Classify raw image bytes before writing to disk.
-    Used by the report fetcher so chrome is never saved.
-    """
-    if not data:
-        return "empty image body"
-    if len(data) < 40:
-        return "image too small"
-    digest = md5_bytes(data)
-    if digest in KNOWN_PLACEHOLDER_MD5:
-        return "registry silhouette placeholder (known stub)"
-    if digest in KNOWN_CHROME_MD5:
-        return "site chrome (known non-mugshot)"
-    if url_looks_like_chrome(url):
-        # Still allow dedicated mugshot URLs (handled inside url_looks_like_chrome)
-        return "chrome URL pattern"
-    # Sniff ext from magic if needed
-    e = (ext or "").lower()
-    if not e:
-        if data[:3] == b"\xff\xd8\xff":
-            e = ".jpg"
-        elif data[:8] == b"\x89PNG\r\n\x1a\n":
-            e = ".png"
-        elif data[:6] in (b"GIF87a", b"GIF89a"):
-            e = ".gif"
-        elif data[:4] == b"RIFF" and len(data) > 12 and data[8:12] == b"WEBP":
-            e = ".webp"
-    dims = _dims_from_bytes(data)
-    if dims is None:
-        # Can't decode — let caller keep if other checks pass
-        return None
-    w, h = dims
-    geo = _geometry_reason(w, h, len(data), ext=e)
-    if geo:
-        return geo
-    # Silhouette on in-memory JPEG stubs (write temp-less via dims + histogram)
-    if _STUB_SIZE_MIN <= len(data) <= _STUB_SIZE_MAX:
-        try:
-            from PIL import Image
-            import io
-
-            with Image.open(io.BytesIO(data)) as im:
-                gray = im.convert("L")
-                gray.thumbnail((160, 160))
-                hist = gray.histogram()
-                total = float(sum(hist)) or 1.0
-                white = sum(hist[241:256]) / total
-                black = sum(hist[0:40]) / total
-                mid = 1.0 - white - black
-                if (
-                    white >= _WHITE_FRAC_MIN
-                    and black >= _BLACK_FRAC_MIN
-                    and mid <= _MID_FRAC_MAX
-                ):
-                    return "registry silhouette placeholder (white bg + outline)"
-        except Exception:
-            pass
-    return None
-
-
-def clear_placeholder_cache() -> None:
-    """Drop the path classification cache (tests / after photo re-download)."""
-    _classify_cached.cache_clear()
-
-
-def resolve_photo_path(
-    raw: Union[str, Path, None],
-    *,
-    extra_roots: Optional[Sequence[Union[str, Path]]] = None,
-) -> Optional[Path]:
-    """Resolve a mugshot path against cwd and optional project roots."""
-    s = str(raw or "").strip()
-    if not s:
-        return None
-    roots: list[Path] = [Path.cwd()]
-    for root in extra_roots or ():
-        try:
-            roots.append(Path(root))
-        except (TypeError, ValueError):
-            continue
-    # Default project root: repo root (scraper/mugshot_ethnicity -> scraper -> repo)
-    try:
-        roots.append(Path(__file__).resolve().parents[2])
-    except (IndexError, OSError):
-        pass
-    seen: set[str] = set()
-    candidates: list[Path] = []
-    for base in roots:
-        for variant in (s, s.replace("\\", "/"), s.replace("/", "\\")):
-            for p in (Path(variant), base / variant, base / variant.replace("\\", "/")):
-                key = str(p)
-                if key in seen:
-                    continue
-                seen.add(key)
-                candidates.append(p)
-    name = Path(s).name
-    if name and name != s:
-        for base in roots:
-            candidates.append(base / "data" / "photos" / name)
-            candidates.append(base / "data" / "photos" / "recentlybooked" / name)
-    for p in candidates:
-        try:
-            if p.is_file() and p.stat().st_size > 0:
-                return p.resolve()
-        except OSError:
-            continue
-    return None
+__all__ = [
+    "KNOWN_PLACEHOLDER_MD5",
+    "KNOWN_CHROME_MD5",
+    "file_md5",
+    "md5_bytes",
+    "url_looks_like_chrome",
+    "is_placeholder_photo_url",
+    "record_has_real_photo",
+    "non_mugshot_reason",
+    "is_non_mugshot",
+    "placeholder_reason",
+    "is_placeholder_photo",
+    "bytes_non_mugshot_reason",
+    "clear_placeholder_cache",
+    "resolve_photo_path",
+    "_geometry_reason",
+    "_heuristic_crimewatch_stock",
+    "_heuristic_crimewatch_stock_from_rgb",
+    "_heuristic_silhouette",
+    "_image_dims",
+    "_dims_from_bytes",
+    "_rgb_arrays_from_image",
+]
