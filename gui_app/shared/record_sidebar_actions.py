@@ -84,10 +84,21 @@ class RecordSidebarActionsMixin:
 
     def _set_photo(self, image: Any, text: str = "") -> None:
         self._image_ref = image
+        # Keep label slot at the configured box size so the image is centered
+        # inside a stable frame (never larger than the slot).
+        try:
+            w, h = self.photo_size
+            self.photo.configure(width=int(w), height=int(h))
+        except Exception:
+            pass
         if image is None:
             self.photo.configure(image="", text=text or "No photo")
         else:
             self.photo.configure(image=image, text="")
+
+    def _store_photo_source(self, pil_image: Any) -> None:
+        """Keep full-res RGB source so resize can re-fit without re-download."""
+        self._pil_source = pil_image
 
     def _load_photo(self, record: Dict[str, Any], token: int) -> None:
         load_sidebar_photo(
@@ -97,4 +108,20 @@ class RecordSidebarActionsMixin:
             load_token_fn=lambda: self._load_token,
             schedule_fn=self._schedule,
             set_photo_fn=self._set_photo,
+            store_source_fn=self._store_photo_source,
         )
+
+    def _refit_current_photo(self) -> None:
+        """Re-render the current mugshot into the latest photo_size box."""
+        from gui_app.shared.record_sidebar_photo import render_fitted_ctk_image
+
+        src = getattr(self, "_pil_source", None)
+        if src is None:
+            if self._record:
+                self._load_photo(self._record, self._load_token)
+            return
+        image = render_fitted_ctk_image(src, self.photo_size)
+        if image is not None:
+            self._set_photo(image)
+        elif self._record:
+            self._load_photo(self._record, self._load_token)

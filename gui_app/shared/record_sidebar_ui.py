@@ -64,8 +64,15 @@ def build_sidebar_widgets(sidebar: Any, parent: Any, photo_size: tuple[int, int]
         sidebar.frame, text="Details", font=FONT_BOLD, text_color=C["text"]
     ).grid(row=0, column=0, sticky="w", padx=12, pady=(10, 2))
 
+    # Host keeps a stable colored box; mugshot is centered and never larger than it.
+    sidebar.photo_host = ctk.CTkFrame(
+        sidebar.frame, fg_color=C["elevated"], corner_radius=8
+    )
+    sidebar.photo_host.grid(row=1, column=0, padx=10, pady=(2, 6), sticky="nsew")
+    sidebar.photo_host.grid_columnconfigure(0, weight=1)
+    sidebar.photo_host.grid_rowconfigure(0, weight=1)
     sidebar.photo = ctk.CTkLabel(
-        sidebar.frame,
+        sidebar.photo_host,
         text="Select a record",
         text_color=C["muted"],
         width=photo_size[0],
@@ -73,7 +80,7 @@ def build_sidebar_widgets(sidebar: Any, parent: Any, photo_size: tuple[int, int]
         fg_color=C["elevated"],
         corner_radius=8,
     )
-    sidebar.photo.grid(row=1, column=0, padx=10, pady=(2, 6), sticky="nsew")
+    sidebar.photo.grid(row=0, column=0, sticky="")
 
     btn_row = ctk.CTkFrame(sidebar.frame, fg_color="transparent")
     btn_row.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 4))

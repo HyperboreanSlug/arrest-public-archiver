@@ -83,28 +83,45 @@ class RecordSidebarShowMixin:
                 self.frame.after_cancel(self._resize_after)
             except Exception:
                 pass
-        self._resize_after = self.frame.after(120, self._apply_photo_slot_size)
+        # Debounce: re-measure slot and re-fit photo after resize settles
+        self._resize_after = self.frame.after(80, self._apply_photo_slot_size)
 
     def _apply_photo_slot_size(self) -> None:
         self._resize_after = None
         size = self._target_photo_size()
-        if size == self.photo_size:
-            return
+        changed = size != getattr(self, "photo_size", None)
         self.photo_size = size
-        self.photo.configure(width=size[0], height=size[1])
-        if self._record:
-            self._load_photo(self._record, self._load_token)
+        try:
+            self.photo.configure(width=size[0], height=size[1])
+        except Exception:
+            pass
+        if not self._record:
+            return
+        # Always re-fit when the slot changed; use cached PIL if available
+        if changed or getattr(self, "_pil_source", None) is not None:
+            if hasattr(self, "_refit_current_photo"):
+                self._refit_current_photo()
+            else:
+                self._load_photo(self._record, self._load_token)
 
     def _target_photo_size(self) -> tuple[int, int]:
+        """Compute photo box from live sidebar geometry (width-driven square)."""
         try:
             fw = int(self.frame.winfo_width())
             fh = int(self.frame.winfo_height())
         except Exception:
-            return self.photo_size
-        if fw < 80 or fh < 80:
-            return self.photo_size
-        side = min(fw - 20, max(180, fh - 360))
-        side = max(200, min(side, 480))
+            return getattr(self, "photo_size", (320, 320))
+        if fw < 60:
+            return getattr(self, "photo_size", (320, 320))
+        # Prefer widget width (padx 10 each side ≈ 20)
+        max_w = max(120, fw - 24)
+        # Leave room for controls below the photo when height is known
+        if fh >= 120:
+            max_h = max(120, fh - 340)
+        else:
+            max_h = max_w
+        side = min(max_w, max_h)
+        side = max(140, min(int(side), 520))
         return (side, side)
 
     @staticmethod
@@ -122,6 +139,7 @@ class RecordSidebarShowMixin:
         self._load_token += 1
         self._record = None
         self._image_ref = None
+        self._pil_source = None
         self.photo.configure(image="", text=message)
         self.open_btn.configure(state="disabled")
         self.open_photo_btn.configure(state="disabled")
