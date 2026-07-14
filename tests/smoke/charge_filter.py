@@ -6,6 +6,7 @@ import unittest
 from tests.smoke._path import ROOT  # noqa: F401
 
 from scraper.charge_classifications import classify_charge, classify_record
+from scraper.charge_expand import expand_charge, expand_charge_text
 from scraper.charge_summary import summarize_charge
 from scraper.database import Database
 from scraper.searcher import ArrestSearcher
@@ -17,6 +18,21 @@ class ChargeFilterTests(unittest.TestCase):
 
     def tearDown(self):
         self.db.close()
+
+    def test_charge_expand_no_abbreviations(self):
+        full = expand_charge_text("A ASSLT CBI FV")
+        self.assertIn("Assault Causes Bodily Injury Family Violence", full)
+        self.assertNotIn("ASSLT", full)
+        self.assertNotIn("CBI", full)
+        self.assertNotRegex(full, r"\bFV\b")
+        full2 = expand_charge_text("A UNL RESTRAINT FV")
+        self.assertIn("Unlawful Restraint Family Violence", full2)
+        self.assertNotIn("UNL", full2)
+        multi = expand_charge(
+            {"charge_description": "A ASSLT CBI FV; A UNL RESTRAINT FV"}
+        )
+        self.assertIn("Assault Causes Bodily Injury Family Violence", multi)
+        self.assertIn("Unlawful Restraint Family Violence", multi)
 
     def test_charge_summaries_merge_aliases(self):
         for raw in (
@@ -40,6 +56,19 @@ class ChargeFilterTests(unittest.TestCase):
         self.assertEqual(
             summarize_charge({"charge_description": "D.U.I. (ALCOHOL)"}),
             "DUI / DWI",
+        )
+        # Abbreviated Texas booking codes → standardized table labels
+        self.assertEqual(
+            summarize_charge("A ASSLT CBI FV"),
+            "DOMESTIC VIOLENCE",
+        )
+        self.assertEqual(
+            summarize_charge("A ASSLT CBI FV; A UNL RESTRAINT FV"),
+            "DOMESTIC VIOLENCE",
+        )
+        self.assertEqual(
+            summarize_charge("UNL RESTRAINT"),
+            "KIDNAPPING / FALSE IMPRISONMENT",
         )
 
     def test_charge_classifications_and_filter(self):

@@ -53,7 +53,20 @@ _SUMMARY_RULES_A: List[Tuple[str, List[str]]] = [
     # --- Domestic / family ---
     (
         "DOMESTIC VIOLENCE",
-        [r"\bdomestic\s+violence", r"\bdomestice?\s+violence", r"\bdomestic\s+assault", r"\bdomestic\s+battery", r"\bfamily\s+violence", r"\bassault\s+causes\s+bodily\s+injury\s+family", r"\bsimple\s+assault-?family", r"\bharassment-?family", r"\bassault-domestic", r"\b13a-6-132\b", r"\bintimate\s+partner"],
+        [
+            r"\bdomestic\s+violence",
+            r"\bdomestice?\s+violence",
+            r"\bdomestic\s+assault",
+            r"\bdomestic\s+battery",
+            r"\bfamily\s+violence",
+            r"\bassault\s+causes\s+bodily\s+injury\s+family",
+            r"\basslt\s+cbi\s+fv\b",
+            r"\bsimple\s+assault-?family",
+            r"\bharassment-?family",
+            r"\bassault-domestic",
+            r"\b13a-6-132\b",
+            r"\bintimate\s+partner",
+        ],
     ),
     (
         "PROTECTIVE / RESTRAINING ORDER VIOLATION",

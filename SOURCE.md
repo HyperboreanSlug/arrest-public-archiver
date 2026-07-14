@@ -186,6 +186,11 @@ tests/                         # Smoke suite split under tests/smoke/
 | `normalize.py` | Map vendor columns → canonical arrest fields |
 | `charge_classifications.py` | Public charge classify API |
 | `charge_rules.py` | Regex/category tables for charges |
+| `charge_expand.py` | Expand jail abbreviations → full plain-language charges (details/card) |
+| `charge_summary.py` | Standardized short labels for tables (expand then match) |
+| `charge_summary_rules.py` | Compile summary rule tables |
+| `charge_summary_rules_a.py` | Summary patterns (immigration through violent) |
+| `charge_summary_rules_b.py` | Summary patterns (weapons through public order) |
 
 ### CLI
 

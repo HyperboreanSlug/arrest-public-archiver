@@ -103,9 +103,11 @@ def location(record: Mapping[str, Any]) -> str:
 
 
 def crime(record: Mapping[str, Any]) -> str:
-    charge = str(record.get("charge_description") or "").strip()
-    if charge:
-        return charge
+    from scraper.charge_expand import expand_charge
+
+    full = expand_charge(record)
+    if full and full != "—":
+        return full
     cat = str(record.get("charge_category") or "").strip()
     return cat.replace("_", " ").title() if cat else "Unknown charge"
 

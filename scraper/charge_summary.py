@@ -1,16 +1,19 @@
 """Summarize raw charge text into short stable labels for misclassify tables.
 
-Example: "ICE", "US IMMIGRATION", "IMMIGRATION HOLD" → "ICE IMMIGRATION HOLD"
+Expands jail abbreviations first, then maps to standardized labels.
+Example: "A ASSLT CBI FV" → "DOMESTIC VIOLENCE"
 """
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Sequence
 
+from scraper.charge_expand import expand_charge_text
 from scraper.charge_summary_rules import _COMPILED
 
 # Split multi-charge blobs from jails that concatenate bookings.
-_SPLIT = re.compile(r"\s*[;|]\s*|\s{2,}|\s*/\s*(?=[A-Z])")
+# Do not split letter+/ tokens (e.g. W/DEADLY WEAPON).
+_SPLIT = re.compile(r"\s*[;|]\s*|\s{2,}|(?<![A-Za-z])\s*/\s*(?=[A-Z])")
 _NOISE = re.compile(
     r"(?i)"
     r"(\$\d[\d,.]*)|"
@@ -32,7 +35,6 @@ def _split_charges(blob: str) -> List[str]:
     if not raw:
         return []
     parts = [p for p in _SPLIT.split(raw) if p and p.strip()]
-    # De-dupe consecutive identical segments (jails often repeat FTA thrice).
     out: List[str] = []
     seen_l: set = set()
     for p in parts:
@@ -40,7 +42,6 @@ def _split_charges(blob: str) -> List[str]:
         key = c.lower()
         if not c or key in seen_l:
             continue
-        # Skip pure agency garbage fragments
         if len(c) < 2:
             continue
         seen_l.add(key)
@@ -49,26 +50,26 @@ def _split_charges(blob: str) -> List[str]:
 
 
 def _match_one(segment: str) -> str:
-    text = segment.strip()
+    # Expand abbreviations so rules see full language.
+    text = expand_charge_text(segment).strip() or segment.strip()
     if not text:
         return ""
     for label, patterns in _COMPILED:
         for pat in patterns:
             if pat.search(text):
                 return label
-    # Fallback: compact original (upper, trim length)
     compact = re.sub(r"\s+", " ", text).strip()
     if len(compact) > 48:
         compact = compact[:45].rstrip() + "…"
-    return compact.upper() if compact == compact.lower() else compact
+    return compact
 
 
 def summarize_charge(record_or_text: Any) -> str:
     """
-    Return a short display summary for charge text or an arrest record.
+    Return a short standardized label for charge text or an arrest record.
 
-    Multi-charge strings are split, each segment summarized, then unique
-    labels joined with ``; `` (priority order preserved).
+    Multi-charge strings are expanded, split, summarized, then unique labels
+    joined with ``; `` (priority order preserved).
     """
     if record_or_text is None:
         return "—"

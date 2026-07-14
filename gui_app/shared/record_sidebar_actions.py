@@ -65,11 +65,15 @@ class RecordSidebarActionsMixin:
         threading.Thread(target=work, daemon=True).start()
 
     def _fill_text(self, record: Dict[str, Any]) -> None:
+        from scraper.charge_expand import expand_charge
         from scraper.searcher import format_race_label
 
         lines = []
         for label, keys in _DETAIL_KEYS:
-            value = first_field(record, keys)
+            if label == "Charges":
+                value = expand_charge(record)
+            else:
+                value = first_field(record, keys)
             if label == "Race" and value != "—":
                 value = format_race_label(value)
             if value != "—":

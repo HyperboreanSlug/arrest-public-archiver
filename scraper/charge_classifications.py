@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from scraper.charge_expand import expand_charge_text
 from scraper.charge_rules import _COMPILED
 from scraper.charge_summary import summarize_charge
 
@@ -68,10 +69,12 @@ def classify_charge(record_or_text: Any) -> str:
     Return a category key for charge text or an arrest record dict.
 
     Empty / unmatchable → "unknown" or "other".
+    Jail abbreviations are expanded before matching.
     """
     text = _charge_blob(record_or_text)
     if not text or not text.strip():
         return "unknown"
+    text = expand_charge_text(text) or text
     for cat, patterns in _COMPILED:
         for pat in patterns:
             if pat.search(text):

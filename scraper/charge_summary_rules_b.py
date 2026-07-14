@@ -4,7 +4,13 @@ from typing import List, Tuple
 _SUMMARY_RULES_B: List[Tuple[str, List[str]]] = [
     (
         "KIDNAPPING / FALSE IMPRISONMENT",
-        [r"\bkidnap", r"\bfalse\s+imprison"],
+        [
+            r"\bkidnap",
+            r"\bfalse\s+imprison",
+            r"\bunlawful\s+restraint",
+            r"\bunl\s+restraint",
+            r"\bcriminal\s+restraint",
+        ],
     ),
     (
         "STALKING / HARASSMENT",

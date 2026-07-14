@@ -66,6 +66,7 @@ _RULES: List[Tuple[str, List[str]]] = [
             r"\bintimate\s+partner", r"\bprotection\s+order",
             r"\brestraining\s+order", r"\bviolat.*(protect|restrain)",
             r"\bdomestic\s+assault", r"\bdomestic\s+battery",
+            r"\basslt\s+cbi\s+fv\b", r"\bcbi\s+fv\b",
             r"\bchild\s+abuse\b", r"\bchild\s+endanger", r"\bneglect\s+of\s+child",
             r"\belder\s+abuse\b",
         ],
@@ -75,7 +76,8 @@ _RULES: List[Tuple[str, List[str]]] = [
         [
             r"\bassault\b", r"\bbattery\b", r"\baggravated\s+assault",
             r"\bfelonious\s+assault", r"\bstalking\b", r"\bharass",
-            r"\bkidnap", r"\bfalse\s+imprison", r"\bstrangul",
+            r"\bkidnap", r"\bfalse\s+imprison", r"\bunlawful\s+restraint",
+            r"\bunl\s+restraint", r"\basslt\b", r"\bstrangul",
             r"\bterroristic\s+threat", r"\bthreat\s+to\s+(kill|injure)",
             r"\bmens?\s+rea.*assault", r"\bmayhem\b", r"\briot\b",
             r"\bresist(ing)?\s+(arrest|officer)", r"\baffray\b",
