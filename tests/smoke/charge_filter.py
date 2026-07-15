@@ -93,20 +93,43 @@ class ChargeFilterTests(unittest.TestCase):
         self.assertEqual(summarize_charge("ZZZ UNKNOWN FOOBAR CHARGE XYZ"), "OTHER")
         from gui_app.shared.export_card_fields import crime
 
+        # Cards use descriptive plain-language charges, not coarse table buckets.
         self.assertEqual(
             crime({"charge_description": "EVADING ARREST DET W/VEH"}),
-            "Evading / Fleeing",
+            "Evading Arrest",
         )
-        self.assertIn(
-            "DUI",
-            crime(
-                {
-                    "charge_description": (
-                        "OPER MV U/INFL ALC .08; NO OPERATORS/MOPED LICENSE"
-                    )
-                }
-            ),
+        dui_card = crime(
+            {
+                "charge_description": (
+                    "OPER MV U/INFL ALC .08; NO OPERATORS/MOPED LICENSE"
+                )
+            }
         )
+        self.assertRegex(dui_card, r"(?i)under the influence|DUI|intoxicat")
+        self.assertIn("No Operator License", dui_card)
+        # Prefer real offense wording over "Sex Offense" bucket.
+        sex_card = crime(
+            {
+                "charge_description": (
+                    "ATTEMPT TO COMMIT AGGRAVATED SEXUAL ASSAULT CHILD"
+                )
+            }
+        )
+        self.assertRegex(sex_card, r"(?i)attempted")
+        self.assertRegex(sex_card, r"(?i)sexual\s+assault")
+        self.assertRegex(sex_card, r"(?i)child")
+        self.assertNotEqual(sex_card.lower(), "sex offense")
+        # Recover offense from raw_json when stored charge is a state stub.
+        recovered = crime(
+            {
+                "charge_description": "Arkansas",
+                "raw_json": (
+                    '{"fields":{"Offense":'
+                    '"ATTEMPT TO COMMIT AGGRAVATED SEXUAL ASSAULT CHILD"}}'
+                ),
+            }
+        )
+        self.assertRegex(recovered, r"(?i)attempted.*sexual\s+assault.*child")
 
     def test_charge_classifications_and_filter(self):
         self.assertEqual(classify_charge("RAPE FIRST DEGREE"), "sex_crimes")

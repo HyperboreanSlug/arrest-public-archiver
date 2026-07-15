@@ -106,16 +106,22 @@ def location(record: Mapping[str, Any]) -> str:
 
 
 def crime(record: Mapping[str, Any], *, max_labels: int = 5) -> str:
-    """Short charge line for export cards (summarized when possible)."""
+    """Descriptive charge line for export cards (plain language when possible).
+
+    Prefers expanded offense text (including recovery from raw_json) over coarse
+    table buckets like \"SEX OFFENSE\", so cards state the actual crime.
+    """
     from scraper.charge_expand import expand_charge
     from scraper.charge_summary import summarize_charge
 
-    summary = summarize_charge(record)
-    if summary and summary != "—":
-        return _card_charge_text(_limit_charge_labels(summary, max_labels))
     full = expand_charge(record)
     if full and full != "—":
-        return _card_charge_text(_limit_charge_labels(full, max_labels))
+        polished = _polish_card_charge(full)
+        if polished:
+            return _card_charge_text(_limit_charge_labels(polished, max_labels))
+    summary = summarize_charge(record)
+    if summary and summary not in ("—", "OTHER"):
+        return _card_charge_text(_limit_charge_labels(summary, max_labels))
     cat = str(record.get("charge_category") or "").strip()
     return cat.replace("_", " ").title() if cat else "Unknown charge"
 
@@ -140,13 +146,76 @@ _CARD_ACRONYMS = {
     "Id": "ID",
     "Mv": "MV",
     "Be": "B&E",
+    "Usc": "USC",
 }
+
+# Leading statute / booking codes before the offense words.
+_LEADING_CODE = re.compile(
+    r"(?ix)^\s*"
+    r"(?:"
+    r"(?:\d+\s*[.\-]\s*)+\d+\s*[-–—:]\s+"  # 97.5.23 -  / 5 - 14 - 108 -
+    r"|\d{2,5}\s*[-–—:]\s+"  # 0950 -
+    r"|\d+\s+Usc\b[\w\s().]*?[-–—]\s+"  # 18 USC 2252A(a)(2) -
+    r")"
+)
+_ATTEMPT = re.compile(
+    r"(?i)\bAttempt(?:ed)?\s+To\s+Commit\b|\bAttempt(?:ed)?\s+To\b|\bAttempt\b(?=\s+\w)"
+)
+_ORDINAL_DEGREE = re.compile(
+    r"\b(\d+)\s*[-–—]?\s*(?:St|Nd|Rd|Th)\b(?:\s+Degree)?",
+    re.IGNORECASE,
+)
+_PAGE_JUNK = re.compile(r"(?i)\s*[-–—]?\s*Page\s*:\s*\d+.*$")
+_PAREN_META = re.compile(
+    r"\([^)]*(?:Lev|Deg|Count|Principal|Page)[^)]*\)",
+    re.IGNORECASE,
+)
+_TRAILING_ROLE = re.compile(
+    r"(?i)\s*[-–—]\s*(?:Principal|Accomplice|Aider|Abettor)\b.*$"
+)
+_BAC_FRAG = re.compile(r"(?i)\s*[.\-]\s*0?\.\d{1,3}\b|\s+\.\s+\d{2}\b")
+_SEX_CHILD = re.compile(
+    r"(?i)\b((?:Aggravated\s+)?(?:Sexual\s+)?(?:Assault|Abuse|Battery|Rape))"
+    r"\s+Child\b"
+)
+_SMALL_WORDS = frozenset(
+    {"A", "An", "And", "Of", "Or", "The", "To", "For", "In", "On", "By", "With"}
+)
+
+
+def _ordinal_degree(match: re.Match) -> str:
+    n = int(match.group(1))
+    mod100 = n % 100
+    if 10 < mod100 < 14:
+        suf = "th"
+    else:
+        suf = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suf} Degree"
+
+
+def _polish_card_charge(text: str) -> str:
+    """Strip codes/meta and normalize phrasing for share-card readability."""
+    parts: list[str] = []
+    for raw in str(text or "").split(";"):
+        s = " ".join(raw.split()).strip(" -–—:")
+        if not s:
+            continue
+        s = _PAGE_JUNK.sub("", s)
+        s = _PAREN_META.sub(" ", s)
+        s = _TRAILING_ROLE.sub("", s)
+        s = _LEADING_CODE.sub("", s)
+        s = _ATTEMPT.sub("Attempted", s)
+        s = _ORDINAL_DEGREE.sub(_ordinal_degree, s)
+        s = _SEX_CHILD.sub(r"\1 of a Child", s)
+        s = _BAC_FRAG.sub("", s)
+        s = re.sub(r"\s+", " ", s).strip(" -–—:;")
+        if s:
+            parts.append(s)
+    return "; ".join(parts)
 
 
 def _card_charge_text(text: str) -> str:
-    """Title-case ALL-CAPS summary labels for readable card layout."""
-    import re
-
+    """Title-case charge lines for readable card layout; fix small words/acronyms."""
     parts: list[str] = []
     for raw in str(text or "").split(";"):
         s = " ".join(raw.split()).strip()
@@ -154,11 +223,22 @@ def _card_charge_text(text: str) -> str:
             continue
         if s.isupper() and any(c.isalpha() for c in s):
             s = s.title()
-            s = re.sub(
-                r"\b(" + "|".join(_CARD_ACRONYMS.keys()) + r")\b",
-                lambda m: _CARD_ACRONYMS.get(m.group(1), m.group(1)),
-                s,
-            )
+        words = s.split()
+        fixed: list[str] = []
+        for i, w in enumerate(words):
+            if i > 0 and w in _SMALL_WORDS:
+                fixed.append(w.lower())
+            elif w in _CARD_ACRONYMS:
+                fixed.append(_CARD_ACRONYMS[w])
+            else:
+                key = w[:1].upper() + w[1:] if w else w
+                fixed.append(_CARD_ACRONYMS.get(key, w))
+        s = " ".join(fixed)
+        s = re.sub(
+            r"\b(" + "|".join(_CARD_ACRONYMS.keys()) + r")\b",
+            lambda m: _CARD_ACRONYMS.get(m.group(1), m.group(1)),
+            s,
+        )
         parts.append(s)
     return "; ".join(parts) if parts else str(text or "").strip()
 

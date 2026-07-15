@@ -91,7 +91,7 @@ tests/                         # Smoke suite split under tests/smoke/
 | `record_sidebar_flags.py` | Merge `ethnicity_review` / `race_manual` into `flags` JSON |
 | `verdict_persist.py` | Save + verify ethnicity_review flags to DB |
 | `export_card.py` | Public API: `render_export_card`, `export_record_card_to_desktop` |
-| `export_card_fields.py` | Name/location/crime/date extractors, fonts |
+| `export_card_fields.py` | Name/location/crime/date extractors, fonts; card crime uses descriptive plain-language offenses |
 | `export_card_photo.py` | Mugshot load, seal watermark prep |
 | `export_card_render.py` | Compose card image (including red race banner) |
 | `detail_drawer.py` | Small detail drawer for Search |
