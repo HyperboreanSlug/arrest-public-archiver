@@ -84,6 +84,17 @@ class MisclassAnalyzeTests(unittest.TestCase):
             names_h2 = {(m.record.get("last_name") or "").lower() for m in hisp2}
             self.assertNotIn("garcia", names_h2)
 
+            # Confirmed correct only when confirmation filter requests it.
+            hisp_ok, _ = searcher.analyze_ethnicities(
+                min_confidence=0.5,
+                limit=0,
+                ethnicity_filter="hispanic",
+                ethnicity_review="correct",
+                return_base_count=True,
+            )
+            names_ok = {(m.record.get("last_name") or "").lower() for m in hisp_ok}
+            self.assertIn("garcia", names_ok)
+
             indian, base_i = searcher.analyze_ethnicities(
                 min_confidence=0.5,
                 limit=0,

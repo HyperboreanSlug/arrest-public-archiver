@@ -52,7 +52,7 @@ tests/                         # Smoke suite split under tests/smoke/
 
 | Module | Lines (≈) | Function |
 |--------|----------:|----------|
-| `gui.py` | ≤200 | Desktop bootstrap: deps check, launch `ArrestArchiverApp` |
+| `gui.py` | ≤200 | Desktop bootstrap: GitHub auto-update, deps check, launch `ArrestArchiverApp` |
 | `run_gui.bat` | — | Install core deps, start `pythonw gui.py` |
 | `Launch Arrest Archiver.vbs` | — | Double-click launcher (no console) |
 | `scraper/__main__.py` | ≤10 | CLI entry: `python -m scraper` |
@@ -69,6 +69,7 @@ tests/                         # Smoke suite split under tests/smoke/
 | `gui_app/__init__.py` | Package marker |
 | `gui_app/shell.py` | Main window, tab host registration, DB/settings lifecycle, log drain |
 | `gui_app/process_lifecycle.py` | Hard shutdown: cancel flags, quit Tk, force-exit leftover threads |
+| `gui_app/auto_update.py` | On open: git fetch origin; ff-only pull when behind; relaunch |
 | `gui_app/theme.py` | Colors, fonts, Treeview dark styling |
 | `gui_app/lazy_tabs.py` | Build tab body only on first selection |
 | `gui_app/paths.py` | Project root path |
@@ -104,7 +105,7 @@ tests/                         # Smoke suite split under tests/smoke/
 | `misclassify_constants.py` | Column labels + verification filter maps |
 | `misclassify_suspect.py` | Filter rows to surname-vs-race misclass suspects |
 | `misclassify_verdict.py` | Persist verification; correct → actual=stated race |
-| `misclassify_build.py` | Filters UI (stated race, actual race, verification) |
+| `misclassify_build.py` | Filters UI (stated race, actual race, confirmation) |
 | `misclassify_actions.py` | Refresh, verification save, actual-race save |
 | `misclassify_export.py` | CSV export, row drop after filter change |
 | `search.py` | Name/state/race/charge search UI |
@@ -141,8 +142,8 @@ tests/                         # Smoke suite split under tests/smoke/
 | `live_filters.py` | Hide no-race/photo; rebuild tree; poll tick |
 | `live_refresh.py` | Refresh orchestration + apply results to UI |
 | `live_fetch.py` | Multi-source live poll + import + cross-source dedupe |
-| `misclassify.py` | Stated-race filter UI + actual race |
-| `misclassify_analyze.py` | Surname analysis worker for all mugshot hosts |
+| `misclassify.py` | Stated-race + confirmation filter UI + actual race |
+| `misclassify_analyze.py` | Surname analysis worker; honors confirmation filter |
 | `full_scrape.py` | Full scrape bar (source, state, county, threads, filters) |
 | `full_scrape_run.py` | Validate inputs, save settings, start thread |
 | `full_scrape_worker.py` | Background scrape worker body |

@@ -7,6 +7,7 @@ from gui_app.tabs.browse.misclassify_constants import (
     BROWSE_ACTUAL_RACES,
     actual_race_filter_values,
 )
+from scraper.searcher import ethnicity_review_verdict
 
 
 def resolve_actual_filter(actual: Optional[str]) -> Tuple[Optional[str], Optional[List[str]]]:
@@ -20,18 +21,31 @@ def resolve_actual_filter(actual: Optional[str]) -> Tuple[Optional[str], Optiona
     return None, None
 
 
+def matches_confirmation(record: Dict[str, Any], review: Optional[str]) -> bool:
+    """True when *record* matches the Verification/confirmation filter key."""
+    if review is None or review in ("", "all", "*"):
+        return True
+    verdict = ethnicity_review_verdict(record)
+    key = str(review).strip().lower()
+    if key in ("unreviewed", "unverified", "none", "unset"):
+        return not verdict
+    return verdict == key
+
+
 def filter_suspected_misclass(
     records: List[Dict[str, Any]],
     *,
     min_confidence: float = 0.5,
     ethnic_db: Any = None,
+    ethnicity_review: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Keep only rows where the ethnic surname model disagrees with stated race.
 
     Same core rules as ``ArrestSearcher.analyze_ethnicities`` (min confidence,
-    not compatible with recorded race). Does **not** skip reviewed rows — the
-    browse Verification filter already handles that.
+    not compatible with recorded race). When *ethnicity_review* is set (e.g.
+    ``unreviewed``), confirmed rows are excluded so they never reappear after
+    confirmation.
     """
     from scraper.searcher_names import (
         _first_name_from_record,
@@ -47,6 +61,8 @@ def filter_suspected_misclass(
 
     out: List[Dict[str, Any]] = []
     for rec in records:
+        if not matches_confirmation(rec, ethnicity_review):
+            continue
         last = _last_name_from_record(rec)
         if not last:
             continue

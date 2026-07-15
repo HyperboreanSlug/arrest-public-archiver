@@ -67,7 +67,7 @@ class MisclassifyBuildMixin:
         for label, widget in (
             ("Stated race", self.browse_stated_race),
             ("Actual race", self.browse_actual_race_filter),
-            ("Verification", self.browse_review),
+            ("Confirmation", self.browse_review),
             ("Limit (0=all)", self.browse_limit),
         ):
             ctk.CTkLabel(controls, text=label, font=FONT_SM, text_color=C["muted"]).pack(
@@ -86,7 +86,7 @@ class MisclassifyBuildMixin:
 
         self.browse_status = ctk.CTkLabel(
             controls,
-            text="Filter arrests and review with the sidebar.",
+            text="Filter arrests and review with the sidebar. Confirmed stay out of Unverified.",
             font=FONT_SM,
             text_color=C["muted"],
         )

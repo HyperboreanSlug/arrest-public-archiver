@@ -4,6 +4,7 @@ from __future__ import annotations
 import threading
 
 from gui_app.shared.record_sidebar import race_manual_override
+from gui_app.tabs.browse.misclassify_constants import verification_label
 from gui_app.widgets import tree_row_bind, tree_rows_reset
 from scraper.charge_summary import summarize_charge
 from scraper.searcher import ArrestSearcher
@@ -16,6 +17,9 @@ class RbMisclassifyAnalyzeMixin:
         self.rb_mc_status.configure(text="Analyzing…")
         self.rb_mc_sidebar.clear("Analyzing…")
         race_filter = self._rb_mc_race_filter()
+        review_q = self._rb_mc_review_query()
+        # searcher uses unreviewed by default; None = all confirmation statuses
+        review_arg = review_q if review_q is not None else "all"
         mugshot_sources = [sid for sid, _ in _RB_SOURCE_OPTIONS]
 
         def work():
@@ -42,6 +46,7 @@ class RbMisclassifyAnalyzeMixin:
                     part, part_base = s.analyze_ethnicities(
                         source_system=src,
                         race=race_filter,
+                        ethnicity_review=review_arg,
                         return_base_count=True,
                     )
                     rows.extend(part)
@@ -88,14 +93,21 @@ class RbMisclassifyAnalyzeMixin:
                             mc.expected_race,
                             mc.likely_ethnicity,
                             f"{mc.confidence:.2f}",
+                            verification_label(rec),
                             summarize_charge(rec),
                             rec.get("state") or "",
                         ),
                     )
                     tree_row_bind(self.rb_mc_tree, item, rec)
                 race_lbl = race_filter or "all races"
+                conf_lbl = (
+                    getattr(self, "rb_mc_review", None).get()
+                    if getattr(self, "rb_mc_review", None)
+                    else "Unverified"
+                )
                 msg = (
-                    f"Surname analysis (mugshot sources, stated={race_lbl}): "
+                    f"Surname analysis (mugshot sources, stated={race_lbl}, "
+                    f"confirmation={conf_lbl}): "
                     f"{len(rows)} flags from {base} names"
                     + (
                         f" · deduped {dedupe_removed} duplicate(s)"

@@ -13,6 +13,21 @@ from .searcher_names import (
 from .searcher_race import _ethnicity_family, _is_compatible, format_race_label
 
 
+def _normalize_review_filter(ethnicity_review: Optional[str]) -> Optional[str]:
+    """Map UI/CLI review label → unreviewed | correct | incorrect | None (all)."""
+    raw = (ethnicity_review if ethnicity_review is not None else "unreviewed")
+    key = str(raw).strip().lower()
+    if key in ("", "all", "*"):
+        return None
+    if key in ("unreviewed", "none", "unset", "unverified"):
+        return "unreviewed"
+    if key in ("correct", "confirmed correct"):
+        return "correct"
+    if key in ("incorrect", "confirmed incorrect"):
+        return "incorrect"
+    return "unreviewed"
+
+
 def analyze_ethnicities_impl(
     searcher,
     min_confidence: float = 0.5,
@@ -23,8 +38,14 @@ def analyze_ethnicities_impl(
     race: Optional[str] = None,
     return_base_count: bool = False,
     named_only: bool = True,
+    ethnicity_review: Optional[str] = "unreviewed",
 ):
-    """Primary analysis: surname ethnicity vs recorded race on arrest rows."""
+    """Primary analysis: surname ethnicity vs recorded race on arrest rows.
+
+    *ethnicity_review* defaults to ``unreviewed`` so confirmed rows never reappear
+    in the default queue. Pass ``all`` / ``None`` to include confirmed, or
+    ``correct`` / ``incorrect`` to list only that confirmation status.
+    """
     from .charge_classifications import classify_charge
 
     misclassifications: List[Misclassification] = []
@@ -40,6 +61,7 @@ def analyze_ethnicities_impl(
     if race_f and race_f.lower() in ("all", "*", ""):
         race_f = None
     race_label_f = format_race_label(race_f) if race_f else None
+    review_f = _normalize_review_filter(ethnicity_review)
     hc_only = filter_key in (
         "indian_high_confidence",
         "high_confidence_indian",
@@ -57,7 +79,11 @@ def analyze_ethnicities_impl(
         charge_category=charge_f,
         source_system=src_f,
     ):
-        if ethnicity_review_verdict(record):
+        verdict = ethnicity_review_verdict(record)
+        if review_f == "unreviewed":
+            if verdict:
+                continue
+        elif review_f is not None and verdict != review_f:
             continue
         if charge_f:
             cat = (record.get("charge_category") or "").strip().lower()

@@ -9,6 +9,11 @@ from gui_app.shared.record_sidebar import (
     RecordSidebar,
     merge_race_manual_flags,
 )
+from gui_app.tabs.browse.misclassify_constants import (
+    VERIFICATION_FILTERS,
+    verification_label,
+    verification_query,
+)
 from gui_app.theme import C, FONT_SM
 from gui_app.widgets import (
     _enable_tree_column_sort,
@@ -20,56 +25,81 @@ from gui_app.widgets import (
 )
 from scraper.database import Database
 
+from .full_scrape_flow import FlowRow, after_idle_reflow
+
 
 class RbMisclassifyMixin:
     def _build_rb_misclassify(self, tab):
         bar = ctk.CTkFrame(tab, fg_color=C["panel"])
         bar.pack(fill="x", padx=8, pady=8)
-        ctk.CTkLabel(
-            bar, text="Stated race", font=FONT_SM, text_color=C["muted"]
-        ).pack(side="left", padx=(8, 3), pady=8)
+        flow = FlowRow(bar, padx=5, pady=4)
+
+        race_lbl = ctk.CTkLabel(
+            flow.host, text="Stated race", font=FONT_SM, text_color=C["muted"]
+        )
         race_values = ["All"]
         try:
             race_values = ["All"] + Database(self.db_path).distinct_race_labels()
         except Exception:
             pass
         self.rb_mc_stated_race = ctk.CTkComboBox(
-            bar, values=race_values, width=130
+            flow.host, values=race_values, width=130, command=self._rb_mc_filter_changed
         )
         self.rb_mc_stated_race.set("All")
-        self.rb_mc_stated_race.pack(side="left", padx=(0, 8), pady=8)
-        ctk.CTkButton(bar, text="Analyze", command=self._rb_analyze).pack(
-            side="left", padx=5
+
+        conf_lbl = ctk.CTkLabel(
+            flow.host, text="Confirmation", font=FONT_SM, text_color=C["muted"]
+        )
+        self.rb_mc_review = ctk.CTkComboBox(
+            flow.host,
+            values=list(VERIFICATION_FILTERS),
+            width=170,
+            command=self._rb_mc_filter_changed,
+        )
+        self.rb_mc_review.set("Unverified")
+
+        analyze_btn = ctk.CTkButton(
+            flow.host, text="Analyze", command=self._rb_analyze
         )
         self.rb_mc_status = ctk.CTkLabel(
-            bar,
-            text="Surname misclass for all mugshot sources; filter by stated race.",
+            flow.host,
+            text="Surname misclass; confirmed names stay out unless filtered in.",
             font=FONT_SM,
             text_color=C["muted"],
         )
-        self.rb_mc_status.pack(side="left", padx=12)
+        for w in (
+            race_lbl,
+            self.rb_mc_stated_race,
+            conf_lbl,
+            self.rb_mc_review,
+            analyze_btn,
+            self.rb_mc_status,
+        ):
+            flow.add(w)
+        after_idle_reflow(self, flow)
+        bar.bind("<Configure>", lambda _e: flow.reflow(), add="+")
 
         pane = _hpaned(tab)
         pane.pack(fill="both", expand=True, padx=8, pady=8)
         left = ctk.CTkFrame(pane, fg_color="transparent")
         wrap, self.rb_mc_tree = _tree_frame(left)
         wrap.pack(fill="both", expand=True)
-        cols = ["name", "race", "likely", "conf", "charge", "state"]
+        cols = ["name", "race", "likely", "conf", "review", "charge", "state"]
+        labels = {
+            "name": "Name",
+            "race": "Stated race",
+            "likely": "Likely",
+            "conf": "Conf",
+            "review": "Confirmation",
+            "charge": "Charge",
+            "state": "State",
+        }
         self.rb_mc_tree.configure(columns=cols)
-        _enable_tree_column_sort(self.rb_mc_tree, cols)
-        _stretch_columns(self.rb_mc_tree, cols, [180, 90, 100, 60, 180, 50])
+        _enable_tree_column_sort(self.rb_mc_tree, cols, labels)
+        _stretch_columns(self.rb_mc_tree, cols, [170, 90, 100, 55, 140, 170, 50])
         self.rb_mc_sidebar = RecordSidebar(pane)
         self.rb_mc_sidebar.bind_after(self.after)
-        self.rb_mc_sidebar.bind_verdict(
-            lambda rec, verdict: self._rb_apply_verdict(
-                rec,
-                verdict,
-                tree=self.rb_mc_tree,
-                records=self._rb_mc_records,
-                sidebar=self.rb_mc_sidebar,
-                remove_from_list=True,
-            )
-        )
+        self.rb_mc_sidebar.bind_verdict(self._rb_mc_on_verdict)
         self.rb_mc_sidebar.bind_actual_race(self._rb_mc_set_actual_race)
         pane.add(left, minsize=360, stretch="always")
         pane.add(self.rb_mc_sidebar.frame, minsize=400, stretch="always")
@@ -83,6 +113,51 @@ class RbMisclassifyMixin:
             self.rb_mc_sidebar.show(record)
 
         self.rb_mc_tree.bind("<<TreeviewSelect>>", on_select)
+
+    def _rb_mc_filter_changed(self, _choice: str = "") -> None:
+        # Re-run only when a prior result set exists (avoids surprise full scan).
+        if getattr(self, "_rb_mc_records", None) is not None and self._rb_mc_records:
+            self._rb_analyze()
+
+    def _rb_mc_review_query(self) -> Optional[str]:
+        widget = getattr(self, "rb_mc_review", None)
+        label = widget.get() if widget is not None else "Unverified"
+        return verification_query(label)
+
+    def _rb_mc_on_verdict(self, record: Dict[str, Any], verdict: str) -> None:
+        want = self._rb_mc_review_query()
+        # Drop when filter is Unverified (default) or when the new status
+        # no longer matches Confirmed correct / Confirmed incorrect.
+        remove = (
+            want == "unreviewed"
+            or (want == "correct" and verdict != "correct")
+            or (want == "incorrect" and verdict != "incorrect")
+        )
+        self._rb_apply_verdict(
+            record,
+            verdict,
+            tree=self.rb_mc_tree,
+            records=self._rb_mc_records,
+            sidebar=self.rb_mc_sidebar,
+            remove_from_list=remove,
+        )
+        if not remove:
+            # Refresh confirmation column in place.
+            for existing in self._rb_mc_records:
+                same_id = record.get("id") and existing.get("id") == record.get("id")
+                same_url = (
+                    record.get("source_url")
+                    and existing.get("source_url") == record.get("source_url")
+                )
+                if same_id or same_url or existing is record:
+                    existing["flags"] = record.get("flags")
+                    iid = tree_iid_for_record(self.rb_mc_tree, existing)
+                    if iid is not None:
+                        vals = list(self.rb_mc_tree.item(iid, "values"))
+                        if len(vals) >= 5:
+                            vals[4] = verification_label(existing)
+                            self.rb_mc_tree.item(iid, values=vals)
+                    break
 
     def _rb_mc_set_actual_race(self, record: Dict[str, Any], actual: str) -> None:
         actual = (actual or "").strip() or "Unknown"

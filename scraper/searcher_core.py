@@ -105,8 +105,12 @@ class ArrestSearcher:
         race: Optional[str] = None,
         return_base_count: bool = False,
         named_only: bool = True,
+        ethnicity_review: Optional[str] = "unreviewed",
     ):
-        """Primary analysis: surname ethnicity vs recorded race on arrest rows."""
+        """Primary analysis: surname ethnicity vs recorded race on arrest rows.
+
+        Confirmed rows are excluded by default (``ethnicity_review="unreviewed"``).
+        """
         from .searcher_analyze import analyze_ethnicities_impl
 
         return analyze_ethnicities_impl(
@@ -119,6 +123,7 @@ class ArrestSearcher:
             race=race,
             return_base_count=return_base_count,
             named_only=named_only,
+            ethnicity_review=ethnicity_review,
         )
 
     def get_total_count(self) -> int:

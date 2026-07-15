@@ -19,13 +19,13 @@ BROWSE_LABELS = {
     "name": "Name",
     "race": "Stated race",
     "actual": "Actual race",
-    "review": "Verification",
+    "review": "Confirmation",
     "charge": "Charge",
     "state": "State",
     "date": "Date",
     "source": "Source",
 }
-# Verification status filter (default Unverified).
+# Confirmation status filter (default Unverified — confirmed never reappear).
 VERIFICATION_FILTERS = [
     "Unverified",
     "Confirmed correct",

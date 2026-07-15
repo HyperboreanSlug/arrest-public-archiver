@@ -58,7 +58,11 @@ class MisclassifyActionsMixin:
                 finally:
                     db.close()
                 if misclass_only:
-                    rows = filter_suspected_misclass(rows)
+                    # Re-apply confirmation filter so confirmed names never
+                    # reappear after Classified correctly/incorrectly.
+                    rows = filter_suspected_misclass(
+                        rows, ethnicity_review=review_q
+                    )
                     if limit:
                         rows = rows[:limit]
                 self.after(
