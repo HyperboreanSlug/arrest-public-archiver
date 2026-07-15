@@ -12,8 +12,6 @@ from scraper.searcher import ethnicity_review_verdict
 
 def resolve_actual_filter(actual: Optional[str]) -> Tuple[Optional[str], Optional[List[str]]]:
     """Map UI actual-race filter → search kwargs (single value or IN-list)."""
-    if actual == "(Unset)":
-        return "unset", None
     if actual in BROWSE_ACTUAL_RACES:
         return None, actual_race_filter_values(actual)
     if actual not in ("All", "", None):

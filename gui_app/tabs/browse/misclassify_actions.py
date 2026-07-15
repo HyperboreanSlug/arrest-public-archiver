@@ -183,7 +183,7 @@ class MisclassifyActionsMixin:
                 self.browse_status.configure(text=f"Could not save actual race: {exc}")
                 return
         want = (self.browse_actual_race_filter.get() or "All").strip()
-        drop = want not in ("All", "", None, "(Unset)") and (
+        drop = want not in ("All", "", None) and (
             bucket_actual_race(want) or want
         ) != (bucket_actual_race(actual) or actual)
         self._browse_sync_row(record, drop=drop)

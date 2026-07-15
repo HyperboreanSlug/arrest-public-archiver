@@ -37,13 +37,16 @@ class MisclassifyBuildMixin:
         controls.pack(fill="x", padx=8, pady=8)
 
         races = ["All"] + self._browse_race_choices()
-        actuals = ["All", "(Unset)"] + list(BROWSE_ACTUAL_RACES)
+        actuals = ["All"] + list(BROWSE_ACTUAL_RACES)
 
         self.browse_stated_race = ctk.CTkComboBox(
             controls, values=races, width=120, command=self._browse_filter_changed
         )
         self.browse_actual_race_filter = ctk.CTkComboBox(
-            controls, values=actuals, width=120, command=self._browse_filter_changed
+            controls,
+            values=actuals,
+            width=150,
+            command=self._browse_filter_changed,
         )
         self.browse_review = ctk.CTkComboBox(
             controls,
@@ -103,7 +106,7 @@ class MisclassifyBuildMixin:
         self.mc_tree.configure(columns=BROWSE_COLS)
         _enable_tree_column_sort(self.mc_tree, BROWSE_COLS, BROWSE_LABELS)
         _stretch_columns(
-            self.mc_tree, BROWSE_COLS, [200, 100, 120, 140, 180, 50, 110, 120]
+            self.mc_tree, BROWSE_COLS, [200, 100, 130, 140, 180, 50, 110, 120]
         )
 
         self.browse_sidebar = RecordSidebar(pane)

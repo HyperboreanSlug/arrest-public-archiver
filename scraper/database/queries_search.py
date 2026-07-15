@@ -99,25 +99,47 @@ class QuerySearchMixin:
             if not vals:
                 q += " AND 0"
             else:
-                ph = ",".join("?" * len(vals))
-                q += (
-                    " AND LOWER(TRIM(COALESCE(likely_ethnicity, ''))) "
-                    f"IN ({ph})"
-                )
-                params.extend([v.lower() for v in vals])
+                # Exact match or prefix (e.g. Indian → Indian (high_confidence),
+                # European → European (english)). Escape LIKE metacharacters.
+                parts: List[str] = []
+                for v in vals:
+                    low = v.lower()
+                    esc = _escape_like(low)
+                    parts.append(
+                        "("
+                        "LOWER(TRIM(COALESCE(likely_ethnicity, ''))) = ? "
+                        "OR LOWER(TRIM(COALESCE(likely_ethnicity, ''))) "
+                        "LIKE ? ESCAPE '\\' "
+                        "OR LOWER(TRIM(COALESCE(likely_ethnicity, ''))) "
+                        "LIKE ? ESCAPE '\\'"
+                        ")"
+                    )
+                    params.extend([low, f"{esc} %", f"{esc}(%"])
+                q += " AND (" + " OR ".join(parts) + ")"
         elif likely_ethnicity and str(likely_ethnicity).strip().lower() not in (
             "",
             "all",
             "*",
         ):
             actual = str(likely_ethnicity).strip()
-            if actual.lower() in ("unset", "none", "(unset)"):
+            low = actual.lower()
+            if low in ("unset", "none", "(unset)"):
+                # Unset is not offered in Browse UI; keep for API callers only.
                 q += (
                     " AND (likely_ethnicity IS NULL OR TRIM(likely_ethnicity) = '')"
                 )
             else:
-                q += " AND LOWER(COALESCE(likely_ethnicity, '')) = LOWER(?)"
-                params.append(actual)
+                esc = _escape_like(low)
+                q += (
+                    " AND ("
+                    "LOWER(TRIM(COALESCE(likely_ethnicity, ''))) = ? "
+                    "OR LOWER(TRIM(COALESCE(likely_ethnicity, ''))) "
+                    "LIKE ? ESCAPE '\\' "
+                    "OR LOWER(TRIM(COALESCE(likely_ethnicity, ''))) "
+                    "LIKE ? ESCAPE '\\'"
+                    ")"
+                )
+                params.extend([low, f"{esc} %", f"{esc}(%"])
         if charge_category and str(charge_category).lower() not in ("all", "", "*"):
             q += " AND LOWER(COALESCE(charge_category, '')) = LOWER(?)"
             params.append(charge_category)
