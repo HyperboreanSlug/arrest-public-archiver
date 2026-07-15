@@ -206,6 +206,41 @@ class MisclassAnalyzeTests(unittest.TestCase):
         self.assertTrue(eth.is_indian_surname("Singh") or eth.classify_by_name("Singh")[0].startswith("Indian"))
         self.assertEqual(eth.classify_by_name("Garcia")[0], "Hispanic")
 
+    def test_asian_only_from_name_not_shared_white(self):
+        """White people not marked Asian from name alone unless surname is only Asian."""
+        eth = EthnicNameDatabase()
+        # Shared White/Asian surnames: stay below default Analyze floor (0.5)
+        for first, last in (
+            ("James", "Lee"),
+            ("John", "Park"),
+            ("Mark", "Long"),
+            ("Sarah", "Moon"),
+            ("David", "Song"),
+            ("John", "Law"),
+        ):
+            e, c, _ = eth.classify_by_name(last, first_name=first)
+            self.assertFalse(
+                e.startswith("Asian") and c >= 0.5,
+                f"{first} {last} must not be high Asian conf (got {e} {c})",
+            )
+        # Multi-family European + Asian collision → not Asian from name alone
+        e_bach, c_bach, _ = eth.classify_by_name("Bach", first_name="Hans")
+        self.assertFalse(
+            e_bach.startswith("Asian") and c_bach >= 0.5,
+            f"Hans Bach must not be high Asian (got {e_bach} {c_bach})",
+        )
+        # Exclusively Asian surnames still flag (even with Anglo given names)
+        for first, last in (
+            ("John", "Nguyen"),
+            ("John", "Wang"),
+            ("John", "Chen"),
+            ("John", "Tanaka"),
+            ("John", "Kim"),
+        ):
+            e, c, _ = eth.classify_by_name(last, first_name=first)
+            self.assertTrue(e.startswith("Asian"), f"{first} {last} → {e}")
+            self.assertGreaterEqual(c, 0.5, f"{first} {last} conf {c}")
+
     def test_first_name_confidence_parity(self):
         """SOR parity: ambiguous Indian surname + Anglo first name is low conf."""
         eth = EthnicNameDatabase()

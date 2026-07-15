@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import List, Optional, Tuple
 
+from scraper.ethnic_names_asian_unique import matches_are_only_asian
+
 
 class EthnicNamesClassifyMixin:
     """Surname + given-name classification and confidence."""
@@ -19,6 +21,9 @@ class EthnicNamesClassifyMixin:
         Returns (ethnicity, confidence, matching_labels).
         Confidence is intentionally conservative for multi-ethnic surnames.
         Middle names are used like first names for corroboration / dampening.
+
+        Asian: high confidence from name alone only when the surname is
+        *only Asian* (no non-Asian family hits, not a shared White/Asian name).
         """
         if not surname:
             return ("Unknown", 0.0, [])
@@ -45,6 +50,8 @@ class EthnicNamesClassifyMixin:
         )
         has_hispanic = any(m[0] == "Hispanic" for m in matches)
         has_portuguese = any(m[0] == "Portuguese" for m in matches)
+        # High Asian conf only for exclusively Asian surnames (not Lee/Park/…).
+        only_asian = matches_are_only_asian(surname_lc, matches)
 
         def sort_key(item: Tuple[str, str]) -> float:
             ethnicity, _source = item
@@ -75,9 +82,10 @@ class EthnicNamesClassifyMixin:
                 if fn_signal == "indian":
                     score -= 0.2
             elif ethnicity.startswith("Asian (filipino)"):
-                score = 0.9
+                # Multi-family Filipino/Hispanic names are not "only Asian".
+                score = 0.9 if only_asian else 0.25
             elif ethnicity.startswith("Asian"):
-                score = 1.0
+                score = 1.0 if only_asian else 0.25
             elif ethnicity == "African American":
                 score = 0.95
                 if fn_signal == "african_american":
@@ -147,5 +155,9 @@ class EthnicNamesClassifyMixin:
                 confidence = min(confidence, 0.42)
         elif best_match.startswith("Indian") and fn_signal in ("anglo", "slavic") and is_hc:
             confidence = min(confidence, 0.55)
+
+        # Name alone must not flag White as Asian unless surname is only Asian.
+        if best_match.startswith("Asian") and not only_asian:
+            confidence = min(confidence, 0.35)
 
         return (best_match, confidence, [m[0] for m in matches])

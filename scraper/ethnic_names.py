@@ -9,6 +9,9 @@ Methodology (important):
     surnames (Perera, Silva, …) prefer Hispanic / low Indian confidence.
   * Distinctive high-confidence Indian surnames (Patel, Singh, …) stay strong
     unless the first name strongly contradicts.
+  * Asian: name analysis alone must not mark White as Asian unless the
+    surname is *only Asian* (see ethnic_names_asian_unique.py) — not Lee/Park
+    and not multi-family (e.g. Hispanic+Filipino, German+Bach).
 """
 from __future__ import annotations
 

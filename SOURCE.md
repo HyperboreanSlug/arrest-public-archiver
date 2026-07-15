@@ -233,6 +233,7 @@ tests/                         # Smoke suite split under tests/smoke/
 | `ethnic_names_match.py` | Surname set membership helpers |
 | `ethnic_names_classify.py` | `classify_by_name` orchestration |
 | `ethnic_names_confidence.py` | Confidence scoring |
+| `ethnic_names_asian_unique.py` | Only-Asian vs shared White/Asian surname rules |
 | `ethnic_names.json` | Data file (not code) |
 
 ### Database (`scraper/database/`)
