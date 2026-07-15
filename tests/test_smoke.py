@@ -19,6 +19,7 @@ from tests.smoke.database_core import DatabaseCoreTests  # noqa: F401
 from tests.smoke.misclass_analyze import MisclassAnalyzeTests  # noqa: F401
 from tests.smoke.normalize import NormalizeTests  # noqa: F401
 from tests.smoke.photo_quality import PhotoQualityTests  # noqa: F401
+from tests.smoke.mugshotscom_parse import MugshotsComParseTests  # noqa: F401
 from tests.smoke.recentlybooked_parse import RecentlyBookedParseTests  # noqa: F401
 from tests.smoke.schema_v3 import SchemaV3Tests  # noqa: F401
 
@@ -28,6 +29,7 @@ __all__ = [
     "MisclassAnalyzeTests",
     "ChargeFilterTests",
     "ChargeSanitizeTests",
+    "MugshotsComParseTests",
     "RecentlyBookedParseTests",
     "PhotoQualityTests",
     "SchemaV3Tests",

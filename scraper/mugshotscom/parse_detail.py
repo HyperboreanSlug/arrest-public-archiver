@@ -21,10 +21,13 @@ _FIELD_MAP = {
     "last name": "last_name",
     "first name": "first_name",
     "middle name": "middle_name",
+    "name": "full_name",
     "race": "race",
     "sex": "sex",
     "gender": "sex",
     "age": "age",
+    "dob": "date_of_birth",
+    "date of birth": "date_of_birth",
     "booking date": "booking_date",
     "arrest date": "arrest_date",
     "agency": "agency",
@@ -36,6 +39,8 @@ _FIELD_MAP = {
     "mugshots.com": "source_id",
 }
 
+_DATE_MDY = re.compile(r"(\d{1,2})/(\d{1,2})/(\d{4})")
+
 
 def _text(tag) -> Optional[str]:
     if tag is None:
@@ -44,25 +49,53 @@ def _text(tag) -> Optional[str]:
     return value or None
 
 
+def _iso_date_mdy(raw: str) -> Optional[str]:
+    """``8/13/2014`` or ``7/07/2021 at 14:39`` → ``YYYY-MM-DD`` when parseable."""
+    s = (raw or "").strip()
+    if not s:
+        return None
+    m = _DATE_MDY.search(s)
+    if not m:
+        return None
+    mm, dd, yyyy = int(m.group(1)), int(m.group(2)), m.group(3)
+    return f"{yyyy}-{mm:02d}-{dd:02d}"
+
+
 def _parse_booking_datetime(raw: str) -> Dict[str, str]:
     """``7/07/2021 at 14:39`` → booking_date + arrest_time-ish."""
     out: Dict[str, str] = {}
     s = (raw or "").strip()
     if not s:
         return out
-    m = re.match(
-        r"(\d{1,2})/(\d{1,2})/(\d{4})(?:\s+at\s+(\d{1,2}:\d{2}))?",
-        s,
-        re.I,
-    )
-    if m:
-        mm, dd, yyyy = int(m.group(1)), int(m.group(2)), m.group(3)
-        out["booking_date"] = f"{yyyy}-{mm:02d}-{dd:02d}"
-        if m.group(4):
-            out["arrest_time"] = m.group(4)
+    iso = _iso_date_mdy(s)
+    if iso:
+        out["booking_date"] = iso
+        m = re.search(r"\bat\s+(\d{1,2}:\d{2})\b", s, re.I)
+        if m:
+            out["arrest_time"] = m.group(1)
         return out
     out["booking_date"] = s
     return out
+
+
+def _date_added_from_soup(soup: BeautifulSoup) -> Optional[str]:
+    """``Date added: 8/13/2014`` (``div.item-date``) when no booking/arrest field."""
+    for sel in (".item-date", ".date-added", "#item-date"):
+        el = soup.select_one(sel)
+        if not el:
+            continue
+        text = _text(el) or ""
+        m = re.search(r"date\s*added\s*:?\s*([0-9/.\-]+)", text, re.I)
+        if m:
+            return _iso_date_mdy(m.group(1))
+        iso = _iso_date_mdy(text)
+        if iso:
+            return iso
+    crumb = soup.get_text(" ", strip=True)
+    m = re.search(r"Date\s+added\s*:\s*([0-9/.\-]+)", crumb, re.I)
+    if m:
+        return _iso_date_mdy(m.group(1))
+    return None
 
 
 def parse_detail(html: str, source_url: str) -> Dict[str, Any]:
@@ -95,6 +128,10 @@ def parse_detail(html: str, source_url: str) -> Dict[str, Any]:
             continue
         if key == "booking_date":
             record.update(_parse_booking_datetime(val))
+        elif key == "arrest_date":
+            record["arrest_date"] = _iso_date_mdy(val) or val
+        elif key == "date_of_birth":
+            record["date_of_birth"] = _iso_date_mdy(val) or val
         elif key == "age":
             digits = re.sub(r"\D", "", val)
             if digits:
@@ -110,6 +147,13 @@ def parse_detail(html: str, source_url: str) -> Dict[str, Any]:
     last = str(record.get("last_name") or "").strip()
     if first or last:
         record["full_name"] = " ".join(p for p in (first, middle, last) if p)
+    elif record.get("full_name"):
+        parts = str(record["full_name"]).replace(",", " ").split()
+        if len(parts) >= 2:
+            record.setdefault("first_name", parts[0])
+            record.setdefault("last_name", parts[-1])
+            if len(parts) > 2:
+                record.setdefault("middle_name", " ".join(parts[1:-1]))
 
     charges = charges_from_soup(soup)
     if charges:
@@ -121,6 +165,13 @@ def parse_detail(html: str, source_url: str) -> Dict[str, Any]:
             if len(cells) >= 2 and cells[0].lower() == "agency":
                 record["agency"] = cells[1]
                 break
+
+    if not record.get("booking_date") and not record.get("arrest_date"):
+        # Sex-offender / older pages often only show "Date added" (div.item-date).
+        added = _date_added_from_soup(soup)
+        if added:
+            record["arrest_date"] = added
+            record["booking_date"] = added
 
     crumb = soup.get_text(" ", strip=True)
     m_c = re.search(r"booked in\s+([A-Za-z .'-]+ County),\s*([A-Z]{2})", crumb)

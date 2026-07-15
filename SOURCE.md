@@ -301,7 +301,7 @@ tests/                         # Smoke suite split under tests/smoke/
 | `client.py` | Rate-limited HTTP |
 | `catalog.py` | US-States / county discovery |
 | `parse.py` | Re-export parsers |
-| `parse_detail.py` | Biographic detail page |
+| `parse_detail.py` | Biographic detail page; ``Date added`` → arrest/booking date fallback |
 | `parse_charges.py` | Offense/charge extraction (never state names) |
 | `parse_cards.py` | Listing + live cards |
 | `photos.py` | Photo download to `data/photos/mugshotscom/` |
