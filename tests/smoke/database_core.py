@@ -111,6 +111,85 @@ class DatabaseCoreTests(unittest.TestCase):
         finally:
             db.close()
 
+    def test_verdict_propagates_to_identity_siblings(self):
+        """Confirming one booking confirms same person (name+DOB) siblings."""
+        import tempfile
+        from pathlib import Path
+
+        from gui_app.shared.verdict_persist import persist_ethnicity_verdict
+        from scraper.searcher import ethnicity_review_verdict
+
+        tmp = Path(tempfile.mkdtemp()) / "verdict_sib.db"
+        db = Database(str(tmp))
+        try:
+            db.import_records(
+                [
+                    {
+                        "first_name": "Juan",
+                        "last_name": "Garcia",
+                        "date_of_birth": "1990-01-15",
+                        "race": "White",
+                        "state": "FL",
+                        "source_url": "sib:1",
+                        "booking_date": "2024-01-01",
+                    },
+                    {
+                        "first_name": "Juan",
+                        "last_name": "Garcia",
+                        "date_of_birth": "1990-01-15",
+                        "race": "White",
+                        "state": "FL",
+                        "source_url": "sib:2",
+                        "booking_date": "2024-06-01",
+                    },
+                    {
+                        "first_name": "Other",
+                        "last_name": "Person",
+                        "date_of_birth": "1985-05-05",
+                        "race": "White",
+                        "state": "FL",
+                        "source_url": "sib:3",
+                    },
+                ]
+            )
+            rows = db.search_records(limit=0)
+            primary = next(r for r in rows if r["source_url"] == "sib:1")
+            ok, _flags, err = persist_ethnicity_verdict(
+                str(tmp), dict(primary), "incorrect"
+            )
+            self.assertTrue(ok, err)
+            flags = {
+                int(r["id"]): ethnicity_review_verdict(dict(r))
+                for r in db._conn.execute(
+                    "SELECT id, flags, source_url FROM arrests"
+                ).fetchall()
+            }
+            # Both Garcia bookings confirmed; Other Person not.
+            g_ids = [
+                int(r["id"])
+                for r in db._conn.execute(
+                    "SELECT id, source_url FROM arrests"
+                ).fetchall()
+                if dict(r)["source_url"] in ("sib:1", "sib:2")
+            ]
+            o_id = next(
+                int(r["id"])
+                for r in db._conn.execute(
+                    "SELECT id, source_url FROM arrests"
+                ).fetchall()
+                if dict(r)["source_url"] == "sib:3"
+            )
+            self.assertEqual(flags[g_ids[0]], "incorrect")
+            self.assertEqual(flags[g_ids[1]], "incorrect")
+            self.assertEqual(flags[o_id], "")
+            unverified = db.search_records(ethnicity_review="unreviewed", limit=0)
+            urls = {r.get("source_url") for r in unverified}
+            self.assertNotIn("sib:1", urls)
+            self.assertNotIn("sib:2", urls)
+            self.assertIn("sib:3", urls)
+        finally:
+            db.close()
+
     def test_dedupe_merges_multi_state_charges(self):
         self.db.import_records(
             [

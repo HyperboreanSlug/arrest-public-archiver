@@ -118,6 +118,59 @@ class MisclassAnalyzeTests(unittest.TestCase):
         self.assertFalse(_is_compatible("Hispanic", "White"))
         self.assertFalse(_is_compatible("Hispanic", "Black"))
 
+    def test_same_person_not_queued_twice(self):
+        """Two bookings for the same person yield one misclass row; confirm hides both."""
+        import tempfile
+        from pathlib import Path
+
+        from gui_app.shared.verdict_persist import persist_ethnicity_verdict
+
+        tmp = Path(tempfile.mkdtemp()) / "person_once.db"
+        db = Database(str(tmp))
+        try:
+            db.import_records(
+                [
+                    {
+                        "first_name": "Juan",
+                        "last_name": "Garcia",
+                        "date_of_birth": "1991-03-03",
+                        "race": "White",
+                        "state": "TX",
+                        "source_url": "dup:a",
+                        "source_system": "t",
+                        "booking_date": "2023-01-01",
+                    },
+                    {
+                        "first_name": "Juan",
+                        "last_name": "Garcia",
+                        "date_of_birth": "1991-03-03",
+                        "race": "White",
+                        "state": "TX",
+                        "source_url": "dup:b",
+                        "source_system": "t",
+                        "booking_date": "2023-08-01",
+                    },
+                ]
+            )
+            s = ArrestSearcher(str(tmp))
+            try:
+                hits = s.analyze_ethnicities(
+                    min_confidence=0.5, limit=0, ethnicity_filter="hispanic"
+                )
+                self.assertEqual(len(hits), 1)
+                ok, _, err = persist_ethnicity_verdict(
+                    str(tmp), dict(hits[0].record), "correct"
+                )
+                self.assertTrue(ok, err)
+                hits2 = s.analyze_ethnicities(
+                    min_confidence=0.5, limit=0, ethnicity_filter="hispanic"
+                )
+                self.assertEqual(len(hits2), 0)
+            finally:
+                s.close()
+        finally:
+            db.close()
+
     def test_brown_eyes_brown_hair_boosts_hispanic_white(self):
         """Brown eyes + brown hair raises confidence for Hispanic×White."""
         from scraper.searcher_appearance import (

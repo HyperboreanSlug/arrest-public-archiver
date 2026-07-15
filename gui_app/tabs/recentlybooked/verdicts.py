@@ -1,7 +1,7 @@
 """RecentlyBooked ethnicity-review verdict persistence and UI apply."""
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
 from gui_app.shared.record_sidebar import RecordSidebar
 from gui_app.shared.verdict_persist import persist_ethnicity_verdict
@@ -10,6 +10,7 @@ from gui_app.widgets import (
     tree_row_forget,
     tree_row_record,
 )
+from scraper.identity_review import shares_identity
 
 
 class RbVerdictsMixin:
@@ -19,6 +20,27 @@ class RbVerdictsMixin:
         if not ok and err:
             self.log(f"RB verification save failed: {err}")
         return ok
+
+    def _rb_related_indexes(
+        self, record: Dict[str, Any], records: List[Dict[str, Any]]
+    ) -> List[int]:
+        sib_ids: Set[int] = {
+            int(x)
+            for x in (record.get("_confirmed_sibling_ids") or [])
+            if x is not None
+        }
+        rid = record.get("id")
+        if rid is not None:
+            sib_ids.add(int(rid))
+        out: List[int] = []
+        for i, existing in enumerate(records):
+            eid = existing.get("id")
+            if eid is not None and int(eid) in sib_ids:
+                out.append(i)
+                continue
+            if shares_identity(record, existing):
+                out.append(i)
+        return out
 
     def _rb_apply_verdict(
         self,
@@ -36,22 +58,23 @@ class RbVerdictsMixin:
             else "classified incorrectly"
         )
         saved = self._rb_persist_verdict(record, verdict)
-        # Keep in-memory copy in sync for the current selection.
-        idx = None
-        matched = None
-        for i, existing in enumerate(records):
-            same_id = record.get("id") and existing.get("id") == record.get("id")
-            same_url = (
-                record.get("source_url")
-                and existing.get("source_url") == record.get("source_url")
-            )
-            if same_id or same_url or existing is record:
-                existing["flags"] = record.get("flags")
-                if record.get("id") is not None:
-                    existing["id"] = record["id"]
-                idx = i
-                matched = existing
-                break
+        # Keep in-memory copies in sync for this person (all identity siblings).
+        related = self._rb_related_indexes(record, records)
+        if not related:
+            for i, existing in enumerate(records):
+                same_id = record.get("id") and existing.get("id") == record.get("id")
+                same_url = (
+                    record.get("source_url")
+                    and existing.get("source_url") == record.get("source_url")
+                )
+                if same_id or same_url or existing is record:
+                    related = [i]
+                    break
+        for i in related:
+            existing = records[i]
+            existing["flags"] = record.get("flags")
+            if record.get("id") is not None:
+                existing["id"] = record["id"]
 
         if saved:
             self.log(f"Marked {self._rb_name(record)} as {label}.")
@@ -61,20 +84,34 @@ class RbVerdictsMixin:
                 "(not in DB yet — import to persist)."
             )
 
-        if remove_from_list and idx is not None:
-            iid = tree_iid_for_record(tree, matched)
+        if remove_from_list and related:
+            # Remove highest index first; keep a neighbor for next selection.
             next_iid = None
-            if iid is not None:
+            primary_iid = tree_iid_for_record(tree, records[related[0]])
+            if primary_iid is not None:
                 kids = list(tree.get_children())
-                if iid in kids:
-                    pos = kids.index(iid)
-                    if pos + 1 < len(kids):
-                        next_iid = kids[pos + 1]
-                    elif pos - 1 >= 0:
-                        next_iid = kids[pos - 1]
-                tree.delete(iid)
-                tree_row_forget(tree, iid)
-            records.pop(idx)
+                if primary_iid in kids:
+                    pos = kids.index(primary_iid)
+                    # Prefer a neighbor that is not also being removed.
+                    remove_iids = {
+                        tree_iid_for_record(tree, records[i]) for i in related
+                    }
+                    for cand_pos in list(range(pos + 1, len(kids))) + list(
+                        range(pos - 1, -1, -1)
+                    ):
+                        if kids[cand_pos] not in remove_iids:
+                            next_iid = kids[cand_pos]
+                            break
+            for i in sorted(related, reverse=True):
+                rec = records[i]
+                iid = tree_iid_for_record(tree, rec)
+                if iid is not None:
+                    try:
+                        tree.delete(iid)
+                    except Exception:
+                        pass
+                    tree_row_forget(tree, iid)
+                records.pop(i)
             if next_iid is not None:
                 tree.selection_set(next_iid)
                 tree.focus(next_iid)

@@ -3,6 +3,11 @@ from __future__ import annotations
 
 from typing import List, Optional
 
+from .identity_review import (
+    is_person_reviewed,
+    load_reviewed_identity_keys,
+    person_queue_key,
+)
 from .searcher_core import Misclassification
 from .searcher_names import (
     _first_name_from_record,
@@ -71,6 +76,11 @@ def analyze_ethnicities_impl(
     family_filter = "indian" if hc_only else filter_key
     scan_limit = None if limit is None or int(limit) <= 0 else int(limit)
     newest_first = bool(scan_limit)
+    # When listing unreviewed, hide anyone already confirmed on a sibling booking.
+    reviewed_keys = (
+        load_reviewed_identity_keys(searcher.db) if review_f == "unreviewed" else None
+    )
+    seen_people: set = set()
 
     for record in searcher.db.iter_arrests(
         limit=scan_limit,
@@ -81,7 +91,7 @@ def analyze_ethnicities_impl(
     ):
         verdict = ethnicity_review_verdict(record)
         if review_f == "unreviewed":
-            if verdict:
+            if is_person_reviewed(record, reviewed_keys):
                 continue
         elif review_f is not None and verdict != review_f:
             continue
@@ -114,6 +124,11 @@ def analyze_ethnicities_impl(
         family = _ethnicity_family(likely_eth)
         if family_filter and family != family_filter:
             continue
+        # One person once (after they clear surname filters).
+        pq = person_queue_key(record)
+        if pq in seen_people:
+            continue
+        seen_people.add(pq)
         base_count += 1
         if _is_compatible(likely_eth, recorded_race, recorded_ethnicity):
             continue

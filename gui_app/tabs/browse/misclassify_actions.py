@@ -48,6 +48,13 @@ class MisclassifyActionsMixin:
             try:
                 db = Database(self.db_path)
                 try:
+                    from scraper.identity_review import load_reviewed_identity_keys
+
+                    reviewed_keys = (
+                        load_reviewed_identity_keys(db)
+                        if review_q in ("unreviewed", "unverified", "none", "unset")
+                        else None
+                    )
                     rows = db.search_records(
                         race=None if stated in ("All", "", None) else stated,
                         likely_ethnicity=likely_one,
@@ -55,16 +62,17 @@ class MisclassifyActionsMixin:
                         ethnicity_review=review_q,
                         limit=fetch_limit,
                     )
+                    if misclass_only:
+                        # Confirmed people (and siblings) stay out of Unverified.
+                        rows = filter_suspected_misclass(
+                            rows,
+                            ethnicity_review=review_q,
+                            reviewed_keys=reviewed_keys,
+                        )
+                        if limit:
+                            rows = rows[:limit]
                 finally:
                     db.close()
-                if misclass_only:
-                    # Re-apply confirmation filter so confirmed names never
-                    # reappear after Classified correctly/incorrectly.
-                    rows = filter_suspected_misclass(
-                        rows, ethnicity_review=review_q
-                    )
-                    if limit:
-                        rows = rows[:limit]
                 self.after(
                     0,
                     lambda r=rows, lim=limit, m=misclass_only: self._browse_show(
@@ -114,13 +122,42 @@ class MisclassifyActionsMixin:
                 return i
         return None
 
+    def _browse_related_indexes(self, record: Dict[str, Any]) -> List[int]:
+        """Indexes of this row and any identity siblings still in the list."""
+        from scraper.identity_review import shares_identity
+
+        sib_ids = {
+            int(x)
+            for x in (record.get("_confirmed_sibling_ids") or [])
+            if x is not None
+        }
+        rid = record.get("id")
+        if rid is not None:
+            sib_ids.add(int(rid))
+        out: List[int] = []
+        for i, existing in enumerate(self._browse_records):
+            eid = existing.get("id")
+            if eid is not None and int(eid) in sib_ids:
+                out.append(i)
+                continue
+            if shares_identity(record, existing):
+                out.append(i)
+        if not out:
+            idx = self._browse_find_index(record)
+            if idx is not None:
+                out.append(idx)
+        return out
+
     def _browse_sync_row(self, record: Dict[str, Any], *, drop: bool) -> None:
-        idx = self._browse_find_index(record)
-        if idx is None:
+        indexes = self._browse_related_indexes(record)
+        if not indexes:
             return
         if drop:
-            self._browse_drop_row(idx)
+            # Drop highest index first so earlier indices stay valid.
+            for idx in sorted(indexes, reverse=True):
+                self._browse_drop_row(idx)
             return
+        idx = indexes[0]
         rec = self._browse_records[idx]
         for key in ("flags", "likely_ethnicity", "id"):
             if record.get(key) is not None:

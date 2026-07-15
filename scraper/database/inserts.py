@@ -181,7 +181,13 @@ class InsertMixin:
         vals.append(int(row_id))
         cur = self._conn.execute(f"UPDATE arrests SET {sets} WHERE id = ?", vals)
         self._conn.commit()
-        return (cur.rowcount or 0) > 0
+        if (cur.rowcount or 0) > 0:
+            return True
+        # SQLite may report 0 when values are unchanged — still success if row exists.
+        exists = self._conn.execute(
+            "SELECT 1 FROM arrests WHERE id = ?", (int(row_id),)
+        ).fetchone()
+        return exists is not None
 
     # SOR DeepFace UI alias
     def update_offender(self, row_id: int, fields: Dict[str, Any]) -> bool:

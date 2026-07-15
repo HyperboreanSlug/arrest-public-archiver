@@ -161,18 +161,31 @@ class QuerySearchMixin:
             params.extend([limit, offset])
         rows = [dict(r) for r in self._conn.execute(q, params).fetchall()]
         if review_active:
+            from scraper.identity_review import (
+                dedupe_records_by_person,
+                is_person_reviewed,
+                load_reviewed_identity_keys,
+            )
             from scraper.searcher import ethnicity_review_verdict
+
+            reviewed_keys = None
+            if review in ("unreviewed", "none", "unset", "unverified"):
+                reviewed_keys = load_reviewed_identity_keys(self)
 
             filtered = []
             for rec in rows:
                 verdict = ethnicity_review_verdict(rec)
-                if review in ("unreviewed", "none", "unset"):
-                    if not verdict:
-                        filtered.append(rec)
+                if review in ("unreviewed", "none", "unset", "unverified"):
+                    if is_person_reviewed(rec, reviewed_keys):
+                        continue
+                    filtered.append(rec)
                 elif verdict == review:
                     filtered.append(rec)
-                if limit and len(filtered) >= limit:
-                    break
+            # One row per person so classification queues are not repetitive.
+            if review in ("unreviewed", "none", "unset", "unverified"):
+                filtered = dedupe_records_by_person(filtered, prefer_confidence=False)
+            if limit and len(filtered) > limit:
+                filtered = filtered[:limit]
             rows = filtered
         elif limit and len(rows) > limit:
             rows = rows[:limit]

@@ -89,7 +89,8 @@ tests/                         # Smoke suite split under tests/smoke/
 | `record_sidebar_photo.py` | Resolve path, async photo load |
 | `record_sidebar_actions.py` | Open URL/HTML, export card, detail text |
 | `record_sidebar_flags.py` | Merge `ethnicity_review` / `race_manual` into `flags` JSON |
-| `verdict_persist.py` | Save + verify ethnicity_review flags to DB |
+| `verdict_persist.py` | Save + verify ethnicity_review flags to DB (propagates to identity siblings) |
+| `scraper/identity_review.py` | Person keys, sibling lookup, classification queue dedupe |
 | `export_card.py` | Public API: `render_export_card`, `export_record_card_to_desktop` |
 | `export_card_fields.py` | Name/location/crime/date extractors, fonts; card crime uses descriptive plain-language offenses |
 | `export_card_photo.py` | Mugshot load, seal watermark prep |
@@ -433,6 +434,7 @@ tests/                         # Smoke suite split under tests/smoke/
 | Add a new mugshot host | `mugshot_sources/registry.py` + new package like `mugshotscom/` + `geo.py` dispatch |
 | New open-data city | `config_sources.py` + field map |
 | Backfill mugshots.com Date added → dates | `scripts/backfill_mugshotscom_dates.py` |
+| Propagate confirmation to sibling bookings | `scripts/backfill_confirmation_siblings.py` |
 
 ---
 
