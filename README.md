@@ -25,7 +25,7 @@ Download and archive **publicly published** U.S. arrest / booking open data (and
 ## Quick start
 
 ```bash
-cd arrest-public-archiver
+cd MAPA
 pip install -r requirements.txt
 
 python -m scraper status
@@ -37,6 +37,11 @@ python -m scraper misclassify --ethnicity indian --charge sex_crimes
 python -m scraper recentlybooked live --import
 python -m scraper recentlybooked scrape --state nj --county essex
 python -m scraper recentlybooked misclassify --ethnicity hispanic
+
+# Offline HTTrack mirror already on disk (no network)
+python -m scraper recentlybooked import-mirror "I:\scrape\recentlybooked"
+python -m scraper recentlybooked import-mirror "I:\scrape\recentlybooked" --state az --county apache
+python -m scraper recentlybooked import-mirror "I:\scrape\recentlybooked" --limit 500
 
 # DeepFace (after requirements-vision.txt)
 python -m scraper mugshot setup

@@ -12,6 +12,7 @@ from .catalog import (
     discover_states_from_homepage,
 )
 from .client import RecentlyBookedClient
+from .import_mirror import import_mirror, parse_detail_file, resolve_site_root
 from .live_feed import fetch_live_feed
 from .parse import parse_county_cards, parse_detail, parse_live_feed
 from .photos import download_photo
@@ -29,7 +30,10 @@ __all__ = [
     "discover_states_from_homepage",
     "download_photo",
     "fetch_live_feed",
+    "import_mirror",
     "parse_county_cards",
     "parse_detail",
+    "parse_detail_file",
     "parse_live_feed",
+    "resolve_site_root",
 ]

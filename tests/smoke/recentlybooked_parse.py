@@ -120,6 +120,75 @@ class RecentlyBookedParseTests(unittest.TestCase):
         self.assertIn("POSS CS", rec.get("charge_description") or "")
         self.assertIn("POSS MARIJ", rec.get("charge_description") or "")
 
+    def test_import_mirror_httrack_layout(self):
+        """Synthetic HTTrack tree: parse + archive HTML + DB import."""
+        import tempfile
+        from pathlib import Path
+
+        from scraper.database import Database
+        from scraper.recentlybooked.import_mirror import (
+            import_mirror,
+            parse_detail_file,
+            resolve_site_root,
+        )
+
+        fixtures = ROOT / "tests" / "fixtures"
+        detail_html = (fixtures / "recentlybooked_detail.html").read_text(
+            encoding="utf-8"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_p = Path(tmp)
+            site = tmp_p / "https@recentlybooked.com"
+            detail = site / "xx" / "test-county" / "jane-doe~1_2"
+            detail.parent.mkdir(parents=True)
+            detail.write_text(detail_html, encoding="utf-8")
+            # Optional local photo for path mapping (not required for this test).
+            img = site / "images" / "testfacility" / "12345.webp"
+            img.parent.mkdir(parents=True)
+            img.write_bytes(b"RIFF....WEBP" + b"\x00" * 64)
+
+            self.assertEqual(resolve_site_root(tmp_p), site)
+            html_root = tmp_p / "html_out"
+            photo_root = tmp_p / "photo_out"
+            rec = parse_detail_file(
+                detail,
+                site,
+                with_photos=False,
+                with_html=True,
+                photo_root=photo_root,
+                html_root=html_root,
+            )
+            self.assertEqual(rec.get("first_name"), "Jane")
+            self.assertEqual(rec.get("last_name"), "Doe")
+            self.assertEqual(rec.get("state"), "XX")
+            self.assertEqual(rec.get("county"), "test-county")
+            self.assertTrue(rec.get("html_path"))
+            self.assertTrue(Path(rec["html_path"]).is_file())
+
+            db_path = tmp_p / "t.db"
+            db = Database(str(db_path))
+            try:
+                stats = import_mirror(
+                    tmp_p,
+                    db,
+                    with_photos=False,
+                    with_html=True,
+                    require_photo=False,
+                    html_root=html_root,
+                    photo_root=photo_root,
+                )
+                self.assertEqual(stats["seen"], 1)
+                self.assertEqual(stats["parsed"], 1)
+                self.assertEqual(stats["imported"], 1)
+                self.assertEqual(stats["errors"], 0)
+                n = db._conn.execute(
+                    "SELECT COUNT(*) FROM arrests WHERE source_system=?",
+                    ("recentlybooked",),
+                ).fetchone()[0]
+                self.assertEqual(n, 1)
+            finally:
+                db.close()
+
 
 if __name__ == "__main__":
     unittest.main()

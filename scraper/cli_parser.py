@@ -161,6 +161,33 @@ def _add_recentlybooked(sub: argparse._SubParsersAction, charge_choices) -> None
     )
     prb_mc.add_argument("--database", "-d", default="data/arrests.db")
 
+    prb_im = prb_sub.add_parser(
+        "import-mirror",
+        help="Import offline HTTrack mirror of recentlybooked.com from disk",
+    )
+    prb_im.add_argument(
+        "mirror_path",
+        type=str,
+        help=r"Mirror root (e.g. I:\scrape\recentlybooked or …\https@recentlybooked.com)",
+    )
+    prb_im.add_argument("--state", type=str, help="Limit to one state code (e.g. az)")
+    prb_im.add_argument("--county", type=str, help="Limit to one county slug")
+    prb_im.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Max detail pages to consider (0 = all)",
+    )
+    prb_im.add_argument("--force", action="store_true", help="Re-import existing source_url")
+    prb_im.add_argument("--no-photos", action="store_true")
+    prb_im.add_argument("--no-html", action="store_true")
+    prb_im.add_argument(
+        "--allow-no-photo",
+        action="store_true",
+        help="Import rows even when no real mugshot file is available",
+    )
+    prb_im.add_argument("--database", "-d", default="data/arrests.db")
+
 
 def _add_mugshot(sub: argparse._SubParsersAction) -> None:
     pmug = sub.add_parser("mugshot", help="DeepFace face/race scan (optional vision deps)")

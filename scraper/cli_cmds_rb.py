@@ -1,4 +1,4 @@
-"""CLI commands: recentlybooked live / scrape / misclassify."""
+"""CLI commands: recentlybooked live / scrape / misclassify / import-mirror."""
 from __future__ import annotations
 
 import argparse
@@ -11,8 +11,6 @@ def cmd_recentlybooked(args: argparse.Namespace) -> None:
 
     action = args.rb_action
     db_path = args.database or "data/arrests.db"
-    with_photos = not args.no_photos
-    with_html = not args.no_html
 
     if action == "misclassify":
         if not getattr(args, "source_system", None):
@@ -22,6 +20,12 @@ def cmd_recentlybooked(args: argparse.Namespace) -> None:
         cmd_misclassify(args)
         return
 
+    if action == "import-mirror":
+        _cmd_import_mirror(args, db_path)
+        return
+
+    with_photos = not args.no_photos
+    with_html = not args.no_html
     scraper = RecentlyBookedScraper(delay=float(args.delay or 1.0))
     try:
         if action == "live":
@@ -107,3 +111,55 @@ def cmd_recentlybooked(args: argparse.Namespace) -> None:
             db.close()
     finally:
         scraper.close()
+
+
+def _cmd_import_mirror(args: argparse.Namespace, db_path: str) -> None:
+    from .database import Database
+    from .recentlybooked.import_mirror import import_mirror, resolve_site_root
+
+    mirror = args.mirror_path
+    try:
+        site = resolve_site_root(mirror)
+    except FileNotFoundError as exc:
+        print(f"  Error: {exc}")
+        return
+    print(f"Importing RecentlyBooked mirror…")
+    print(f"  Root: {site}")
+    if args.state:
+        print(f"  State: {args.state}" + (f" / {args.county}" if args.county else ""))
+    with_photos = not args.no_photos
+    with_html = not args.no_html
+    require_photo = not args.allow_no_photo
+
+    def progress(n: int, st: dict) -> None:
+        print(
+            f"  … seen {n} | parsed {st.get('parsed', 0)} | "
+            f"+{st.get('imported', 0)} imported | "
+            f"skip {st.get('skipped', 0)} | "
+            f"no-photo {st.get('rejected_no_photo', 0)} | "
+            f"err {st.get('errors', 0)}",
+            flush=True,
+        )
+
+    db = Database(db_path)
+    try:
+        stats = import_mirror(
+            mirror,
+            db,
+            state=args.state,
+            county=args.county,
+            limit=int(args.limit or 0),
+            with_photos=with_photos,
+            with_html=with_html,
+            skip_existing_urls=not args.force,
+            require_photo=require_photo,
+            progress_cb=progress,
+        )
+        print(
+            f"  Done: seen {stats['seen']}, parsed {stats['parsed']}, "
+            f"imported {stats['imported']}, skipped {stats['skipped']}, "
+            f"no-photo {stats['rejected_no_photo']}, errors {stats['errors']} "
+            f"→ {db_path}"
+        )
+    finally:
+        db.close()

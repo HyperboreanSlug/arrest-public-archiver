@@ -292,6 +292,7 @@ tests/                         # Smoke suite split under tests/smoke/
 | `parse_cards.py` | County/live listing cards |
 | `photos.py` | Download mugshots; skip placeholders |
 | `archive_html.py` | Save HTML under `data/html/` |
+| `import_mirror.py` | Offline HTTrack mirror walk → parse → archive photo/HTML → DB |
 | `locked_set.py` | Thread-safe seen-URL set |
 | `scraper.py` | Public `RecentlyBookedScraper` |
 | `scraper_process.py` | Enrich one card (detail + photo + HTML) |

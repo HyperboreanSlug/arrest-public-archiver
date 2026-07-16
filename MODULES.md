@@ -20,6 +20,7 @@ Entry
 
 gui_app/
 ├── shell.py, theme.py, widgets*.py, lazy_tabs.py, paths.py, resize_perf.py
+├── auto_update.py, process_lifecycle.py
 ├── shared/          # record_sidebar*, export_card*
 └── tabs/
     ├── browse/              # misclassify*, search, statistics, integrity
@@ -49,6 +50,7 @@ scraper/
 | GUI shell | `gui_app/shell.py` |
 | Browse / stated race | `gui_app/tabs/browse/misclassify*.py` |
 | Live feed / multi-host | `gui_app/tabs/recentlybooked/`, `scraper/mugshot_sources/` |
+| Offline HTTrack import | `scraper/recentlybooked/import_mirror.py` |
 | Full scrape load-balance | `mugshot_sources/partition.py`, `balanced.py`, `geo.py` |
 | Surname misclass | `scraper/searcher*.py`, `ethnic_names*.py` |
 | SQLite / dedupe | `scraper/database/` |
