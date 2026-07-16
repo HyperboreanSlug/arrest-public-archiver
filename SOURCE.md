@@ -96,6 +96,7 @@ tests/                         # Smoke suite split under tests/smoke/
 | `scraper/identity_review.py` | Person keys, sibling lookup, classification queue dedupe |
 | `export_card.py` | Public API: `render_export_card`, `export_record_card_to_desktop` |
 | `export_card_fields.py` | Name/location/crime/date extractors, fonts; card crime uses descriptive plain-language offenses |
+| `export_card_polish.py` | Strip codes/meta and proper-case charge lines for export cards |
 | `export_card_photo.py` | Mugshot load, seal watermark prep |
 | `export_card_render.py` | Compose card image (including red race banner) |
 | `detail_drawer.py` | Small detail drawer for Search |
@@ -202,6 +203,7 @@ tests/                         # Smoke suite split under tests/smoke/
 | `charge_sanitize_data.py` | State-name set and jail charge-code labels |
 | `charge_admin.py` | Out-of-county / place-docket admin blobs (not offenses) |
 | `charge_chrome.py` | Strip mugshots.com charges-table UI chrome; extract real offenses |
+| `charge_registry.py` | Strip court/sex-offender registry chrome (Statute/Description/Conviction Date, Offense Code, Sentence Date) |
 | `charge_recover.py` | Recover offense text from raw_json when charge is a stub |
 | `charge_summary.py` | Standardized short labels for tables (expand then match) |
 | `charge_summary_rules.py` | Compile summary rule tables |

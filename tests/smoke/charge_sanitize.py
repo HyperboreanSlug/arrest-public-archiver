@@ -164,6 +164,65 @@ class ChargeSanitizeTests(unittest.TestCase):
         self.assertNotIn("<", card)
         self.assertNotIn("Bond", card)
 
+    def test_registry_statute_description_conviction_stripped(self):
+        """CO mugshots.com registry dump → clean attempted sexual assault card."""
+        raw = (
+            "ATTEMPT SEX ASSAULT OVERCOME VICTIM'S WILL; "
+            "Statute 18-3-402(1)(A) Description ATTEMPT SEX ASSAULT "
+            "OVERCOME VICTIM'S WILL Conviction Date 02-23-2017"
+        )
+        cleaned = sanitize_charge_text(raw)
+        self.assertEqual(cleaned, "ATTEMPT SEX ASSAULT OVERCOME VICTIM'S WILL")
+        self.assertNotIn("Statute", cleaned)
+        self.assertNotIn("Conviction Date", cleaned)
+        self.assertNotIn("Description", cleaned)
+
+        from gui_app.shared.export_card_fields import crime
+
+        card = crime({"charge_description": raw})
+        self.assertEqual(card, "Attempted Sexual Assault")
+        self.assertNotIn("Statute", card)
+        self.assertNotIn("Conviction", card)
+        self.assertNotIn("Overcome", card)
+
+    def test_registry_multi_offense_and_ca_offense_code(self):
+        """Extra offenses from Description kept; CA Offense Code chrome dropped."""
+        multi = (
+            "Attempted sexual assault on a child; "
+            "Statute 18-3-405(1) 18-6-301 Description Attempted sexual "
+            "assault on a child Incest Conviction Date 07-11-2013 03-23-2001"
+        )
+        self.assertEqual(
+            sanitize_charge_text(multi),
+            "Attempted sexual assault on a child; Incest",
+        )
+        from gui_app.shared.export_card_fields import crime
+
+        card = crime({"charge_description": multi})
+        self.assertIn("Attempted Sexual Assault on a Child", card)
+        self.assertIn("Incest", card)
+        self.assertNotIn("Statute", card)
+
+        ca = (
+            "SEXUAL BATTERY; Offense Code 243.4(a) 290 Description "
+            "SEXUAL BATTERY SEX OFFENDER REGISTRATION STATUTE "
+            "Year of Last Conviction Year of Last Release"
+        )
+        cleaned = sanitize_charge_text(ca)
+        self.assertIn("SEXUAL BATTERY", cleaned)
+        self.assertNotIn("Offense Code", cleaned)
+        self.assertNotIn("Year of Last", cleaned)
+        ca_card = crime({"charge_description": ca})
+        self.assertIn("Sexual Battery", ca_card)
+        self.assertNotIn("Offense Code", ca_card)
+        self.assertNotIn("Year of Last", ca_card)
+
+        # Non-registry "statute" wording must not be gutted
+        plain = "DRUGS-POSSESS; GENERIC STATUTE CODE"
+        self.assertEqual(sanitize_charge_text(plain), plain)
+        plain_card = crime({"charge_description": plain})
+        self.assertIn("Statute", plain_card)
+
 
 if __name__ == "__main__":
     unittest.main()

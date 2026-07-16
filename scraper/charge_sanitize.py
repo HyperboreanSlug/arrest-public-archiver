@@ -174,6 +174,7 @@ def pick_charge(
 def sanitize_charge_text(text: str) -> str:
     """Drop non-charge segments from a multi-charge string; join survivors."""
     from scraper.charge_chrome import has_charge_table_chrome, strip_charge_table_chrome
+    from scraper.charge_registry import has_registry_chrome, strip_registry_chrome
 
     raw = _norm(text)
     if not raw:
@@ -183,6 +184,13 @@ def sanitize_charge_text(text: str) -> str:
     fielded = _extract_fielded_descriptions(raw)
     if fielded:
         return fielded
+    # Court / sex-offender registry dumps (Statute…Description…Conviction Date)
+    if has_registry_chrome(raw):
+        reg = strip_registry_chrome(raw)
+        if reg and not is_non_charge(reg):
+            raw = reg
+        elif not reg:
+            return ""
     # Whole-blob chrome extraction first (multi-charge glued without ';')
     if has_charge_table_chrome(raw) and ";" not in raw and "|" not in raw:
         stripped = strip_charge_table_chrome(raw)
@@ -199,6 +207,8 @@ def sanitize_charge_text(text: str) -> str:
         m = _DESC_FIELD.match(s)
         if m:
             s = _norm(m.group(1))
+        if has_registry_chrome(s):
+            s = strip_registry_chrome(s)
         if has_charge_table_chrome(s) or re.search(r"#\d+", s):
             s = strip_charge_table_chrome(s)
         if not s or is_non_charge(s):
