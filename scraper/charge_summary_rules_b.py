@@ -27,6 +27,8 @@ _SUMMARY_RULES_B: List[Tuple[str, List[str]]] = [
     ('DRUG TRAFFICKING', [
         '\\bdrug\\s+traffick', '\\btraffick.*drug', '\\bintent\\s+to\\s+(distrib|deliver|sell)',
         '\\bdelivery\\s+of\\b', '\\bpwid\\b', '\\bmanufacture.*controlled', '\\bman\\s*del\\s+cs\\b',
+        # Jail shorthand: Man.Delv.Poss Cont Subs
+        '\\bman\\.?\\s*delv', '\\bman(?:ufacture)?\\.?\\s*del(?:iv(?:ery|er)?)?\\.?\\s*poss',
     ]),
     ('POSSESSION OF MARIJUANA', [
         '\\bposs(ession)?\\s+of\\s+marij', '\\bmarijuana\\b', '\\bcannabis\\b', '\\bpom\\b',
@@ -45,10 +47,13 @@ _SUMMARY_RULES_B: List[Tuple[str, List[str]]] = [
         '\\bposs\\s+cs\\b', '\\bupocs\\b', '\\bposs(ess|ession)?/?receive\\s+cont', '\\bcocaine\\b',
         '\\bheroin\\b', '\\bfentanyl\\b', '\\bnarcotic', '\\bcds\\b', '\\b13a-12-212\\b',
         '\\bdangerous\\s+drugs\\b',
+        '\\bposs\\.?\\s+cont\\.?\\s+sub', '\\bcont\\.?\\s+subs?\\b',
     ]),
     ('BURGLARY / B&E', [
         '\\bburglar', '\\bb\\s*&\\s*e\\b', '\\bbreaking\\s+and\\s+enter', '\\bhome\\s+invasion',
         '\\bunlawful\\s+entry',
+        '\\bbreaking\\s+and\\s+or\\s+enter', '\\bbreaking\\s+or\\s+enter',
+        '\\bbreak\\s*/\\s*enter', '\\bbreak/?enter',
     ]),
     ('THEFT / LARCENY', [
         '\\btheft\\s+of\\s+property', '\\bgrand\\s+theft', '\\bpetit\\s+theft', '\\bpetty\\s+theft',

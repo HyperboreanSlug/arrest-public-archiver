@@ -97,6 +97,35 @@ class ChargeFilterTests(unittest.TestCase):
             summarize_charge("SEXUAL SOLICITATION OF A CHILD"),
             "SEX OFFENSE",
         )
+        # PA IDSI and other sex crimes must not fall through to OTHER
+        for raw in (
+            "Involuntary Deviate Sexual Intercourse",
+            "INVOLUNTARY DEVIATE SEXUAL INTERCOURSE",
+            "3123 - INVOLUNTARY DEVIATE SEXUAL INTERCOURSE",
+            "Deviate Sexual Intercourse",
+            "Gross Sexual Imposition",
+            "Corruption of Minors",
+            "Indecency with a Child",
+            "21.11 - INDECENCY WITH A CHILD",
+            "Voyeurism",
+            "Patronizing Prostitutes",
+            "Sexual Contact",
+            "Criminal Sexual Conduct 1st Degree",
+        ):
+            self.assertEqual(summarize_charge(raw), "SEX OFFENSE", msg=raw)
+            self.assertEqual(
+                __import__(
+                    "scraper.charge_classifications", fromlist=["classify_charge"]
+                ).classify_charge(raw),
+                "sex_crimes",
+                msg=raw,
+            )
+        # OTHER never coexists with a real summary label
+        mixed = summarize_charge(
+            "SEXUAL ASSAULT; ZZZ UNKNOWN FOOBAR CHARGE XYZ"
+        )
+        self.assertEqual(mixed, "SEX OFFENSE")
+        self.assertNotIn("OTHER", mixed)
         self.assertEqual(
             summarize_charge("UNL RESTRAINT"),
             "KIDNAPPING / FALSE IMPRISONMENT",

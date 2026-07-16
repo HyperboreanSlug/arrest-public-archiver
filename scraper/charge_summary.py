@@ -1,7 +1,8 @@
 """Summarize raw charge text into short stable labels for tables/cards.
 
 Expands jail abbreviations, maps segments to one label each, joins unique labels.
-Unmatched segments become OTHER (no raw docket strings).
+Unmatched segments become OTHER only when *no* known offense matched.
+OTHER is never kept alongside real offense labels.
 """
 from __future__ import annotations
 
@@ -122,6 +123,9 @@ def summarize_charge(record_or_text: Any) -> str:
             continue
         seen.add(key)
         labels.append(lab)
+    # Never list OTHER next to real offenses (charts / multi-charge rows).
+    if len(labels) > 1:
+        labels = [lab for lab in labels if lab.upper() != "OTHER"]
     return "; ".join(labels) if labels else "—"
 
 
