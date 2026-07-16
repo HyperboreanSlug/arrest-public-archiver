@@ -354,9 +354,10 @@ tests/                         # Smoke suite split under tests/smoke/
 | `models.py` | Dataclasses / face label constants |
 | `labels.py` | Normalize face labels; contradict recorded race |
 | `scorer.py` | Score one image via backend |
-| `backends.py` | Re-export backend factory |
+| `backends.py` | Re-export backend factory (`auto` prefers FairFace) |
 | `backends_base.py` | Protocol + MockBackend |
-| `backends_deepface.py` | DeepFace Race backend |
+| `backends_fairface.py` | FairFace via standalone `face-race` package (primary) |
+| `backends_deepface.py` | DeepFace Race backend (fallback) |
 | `backends_clip.py` | Optional CLIP backend |
 | `photo_quality.py` | Re-export placeholder API |
 | `photo_quality_hashes.py` | Known stub MD5 sets |
