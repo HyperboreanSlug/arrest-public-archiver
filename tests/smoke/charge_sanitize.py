@@ -94,6 +94,35 @@ class ChargeSanitizeTests(unittest.TestCase):
         self.assertNotIn("Offense Date", out)
         self.assertNotIn("Count=", out)
 
+    def test_break_enter_and_proper_case_card(self):
+        """NC-style BREAK/ENTER + LE/PROB/PAR expands; card is proper case."""
+        raw = (
+            "BREAK/ENTER MOTOR VEH; ASSAULT PHY INJ LE/PROB/PAR OF; "
+            "BREAK/ENTER MOTOR VEH W/THEFT; RESISTING PUBLIC OFFICER"
+        )
+        expanded = expand_charge_text(raw)
+        self.assertIn("Breaking and Entering a Motor Vehicle", expanded)
+        self.assertIn("With Theft", expanded)
+        self.assertIn("Physical Injury", expanded)
+        self.assertIn("Law Enforcement", expanded)
+        self.assertNotIn("BREAK/ENTER", expanded.upper().replace("BREAKING", ""))
+        self.assertNotRegex(expanded, r"\bVEH\b")
+        self.assertNotRegex(expanded, r"\bPHY\b")
+
+        from gui_app.shared.export_card_fields import crime
+
+        card = crime({"charge_description": raw})
+        self.assertIn("Breaking and Entering a Motor Vehicle", card)
+        self.assertIn("Assault Causing Physical Injury", card)
+        self.assertNotIn("BREAK", card)
+        self.assertNotIn("VEH", card)
+        # No leftover ALLCAPS words (except allowed short acronyms)
+        import re
+
+        for w in re.findall(r"[A-Za-z]{3,}", card):
+            if w.isupper():
+                self.assertIn(w, {"DUI", "DWI", "OWI", "OVI", "FTA", "ICE", "USC", "LEO"})
+
     def test_fielded_description_bond_html_stripped(self):
         """Randall-style field dump → offense lines only (Pena card)."""
         raw = (

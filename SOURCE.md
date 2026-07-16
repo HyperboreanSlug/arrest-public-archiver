@@ -194,6 +194,7 @@ tests/                         # Smoke suite split under tests/smoke/
 | `charge_classifications.py` | Public charge classify API |
 | `charge_rules.py` | Regex/category tables for charges |
 | `charge_expand.py` | Expand jail abbreviations → full plain-language charges (details/card) |
+| `charge_expand_phrases.py` | Phrase table for `charge_expand` (BREAK/ENTER, LE/PROB/PAR, …) |
 | `charge_sanitize.py` | Reject non-charges (state names, bare case numbers); pick code/desc |
 | `charge_sanitize_data.py` | State-name set and jail charge-code labels |
 | `charge_admin.py` | Out-of-county / place-docket admin blobs (not offenses) |

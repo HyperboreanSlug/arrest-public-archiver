@@ -136,18 +136,21 @@ def _limit_charge_labels(text: str, max_labels: int) -> str:
     return "; ".join(parts[:max_labels]) + "; …"
 
 
+# Kept as full uppercase on cards (never mixed case).
 _CARD_ACRONYMS = {
-    "Dui": "DUI",
-    "Dwi": "DWI",
-    "Owi": "OWI",
-    "Ovi": "OVI",
-    "Fta": "FTA",
-    "Ice": "ICE",
-    "Id": "ID",
-    "Dl": "DL",
-    "Mv": "MV",
-    "Be": "B&E",
-    "Usc": "USC",
+    "dui": "DUI",
+    "dwi": "DWI",
+    "owi": "OWI",
+    "ovi": "OVI",
+    "fta": "FTA",
+    "ice": "ICE",
+    "id": "ID",
+    "dl": "DL",
+    "mv": "MV",
+    "be": "B&E",
+    "b&e": "B&E",
+    "usc": "USC",
+    "leo": "LEO",
 }
 
 # Leading statute / booking codes before the offense words.
@@ -185,8 +188,9 @@ _SEX_CHILD = re.compile(
     r"\s+Child\b"
 )
 _SMALL_WORDS = frozenset(
-    {"A", "An", "And", "Of", "Or", "The", "To", "For", "In", "On", "By", "With"}
+    {"a", "an", "and", "of", "or", "the", "to", "for", "in", "on", "by", "with"}
 )
+_AFFIX = re.compile(r"^([(\"'\[]*)(.*?)([.,;:\"'\)\]]*)$")
 
 
 def _ordinal_degree(match: re.Match) -> str:
@@ -214,7 +218,6 @@ def _polish_card_charge(text: str) -> str:
         s = _ORDINAL_GLUED.sub(_ordinal_degree, s)
         s = _ORDINAL_DEGREE.sub(_ordinal_degree, s)
         s = _SEX_CHILD.sub(r"\1 of a Child", s)
-
         s = _BAC_FRAG.sub("", s)
         s = re.sub(r"\s+", " ", s).strip(" -–—:;")
         if s:
@@ -222,20 +225,32 @@ def _polish_card_charge(text: str) -> str:
     return "; ".join(parts)
 
 
-def _title_token(word: str) -> str:
-    """Title-case a token; DRIVER'S → Driver's (not Driver'S)."""
-    if not word:
-        return word
-    letters = re.sub(r"[^A-Za-z]", "", word)
-    if letters and letters.isupper() and any(c in word for c in "'’"):
-        return word[0].upper() + word[1:].lower()
-    if word.isupper() and word.isalpha() and len(word) > 1:
-        return word.title()
-    return word
+def _proper_word(core: str, *, first: bool) -> str:
+    """Force proper case for one word; known acronyms stay uppercase."""
+    if not core:
+        return core
+    low = core.lower()
+    if low in _CARD_ACRONYMS:
+        return _CARD_ACRONYMS[low]
+    om = re.fullmatch(r"(\d+)(st|nd|rd|th)", low)
+    if om:
+        return om.group(1) + om.group(2)
+    if re.fullmatch(r"[\d$.,<>%=+\-]+", core):
+        return core
+    if not first and low in _SMALL_WORDS:
+        return low
+    # Hyphenated: Law-Enforcement → Law-Enforcement
+    if "-" in core and not core.startswith("-"):
+        bits = core.split("-")
+        return "-".join(_proper_word(b, first=(first and i == 0)) for i, b in enumerate(bits))
+    # Apostrophe: driver's → Driver's
+    if re.search(r"[A-Za-z]", core):
+        return low[:1].upper() + low[1:] if low else core
+    return core
 
 
 def _card_charge_text(text: str) -> str:
-    """Title-case charge lines for readable card layout; fix small words/acronyms."""
+    """Proper-case every charge line (no mixed ALLCAPS/Title leftovers)."""
     parts: list[str] = []
     for raw in str(text or "").split(";"):
         s = " ".join(raw.split()).strip()
@@ -243,30 +258,13 @@ def _card_charge_text(text: str) -> str:
             continue
         s = re.sub(r"\(\s+", "(", s)
         s = re.sub(r"\s+\)", ")", s)
-        if s.isupper() and any(c.isalpha() for c in s):
-            s = s.title()
         words = s.split()
         fixed: list[str] = []
         for i, w in enumerate(words):
-            # Strip trailing punctuation for acronym lookup
-            core, punct = w, ""
-            if w and w[-1] in ".,;:":
-                core, punct = w[:-1], w[-1]
-            if i > 0 and core in _SMALL_WORDS:
-                fixed.append(core.lower() + punct)
-            elif core in _CARD_ACRONYMS:
-                fixed.append(_CARD_ACRONYMS[core] + punct)
-            else:
-                titled = _title_token(core)
-                key = titled[:1].upper() + titled[1:] if titled else titled
-                fixed.append(_CARD_ACRONYMS.get(key, titled) + punct)
-        s = " ".join(fixed)
-        s = re.sub(
-            r"\b(" + "|".join(_CARD_ACRONYMS.keys()) + r")\b",
-            lambda m: _CARD_ACRONYMS.get(m.group(1), m.group(1)),
-            s,
-        )
-        parts.append(s)
+            m = _AFFIX.match(w)
+            pre, core, suf = m.groups() if m else ("", w, "")
+            fixed.append(pre + _proper_word(core, first=(i == 0)) + suf)
+        parts.append(" ".join(fixed))
     return "; ".join(parts) if parts else str(text or "").strip()
 
 

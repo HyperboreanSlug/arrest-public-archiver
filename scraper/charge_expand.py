@@ -2,48 +2,9 @@
 from __future__ import annotations
 
 import re
-from typing import Any, List, Tuple
+from typing import Any, List
 
-_PHRASES: List[Tuple[str, str]] = [
-    (r"\bASSLT\s+CBI\s+FV\b", "Assault Causes Bodily Injury Family Violence"),
-    (r"\bASSLT\s+CBI\b", "Assault Causes Bodily Injury"),
-    (r"\bAGG\s+ASSLT\b", "Aggravated Assault"),
-    (r"\bAGG\s+ASSAULT\b", "Aggravated Assault"),
-    (r"\bUNL\s+RESTRAINT\s+FV\b", "Unlawful Restraint Family Violence"),
-    (r"\bUNL\s+RESTRAINT\b", "Unlawful Restraint"),
-    (r"\bUNLAWFUL\s+RESTRAINT\b", "Unlawful Restraint"),
-    (r"\bUNL\s+CARRYING\s+WEAPON\b", "Unlawful Carrying Weapon"),
-    (r"\bUNL\s+POSS\s+FIREARM\b", "Unlawful Possession of Firearm"),
-    (r"\bPOSS\s+CS\b", "Possession of Controlled Substance"),
-    (r"\bPOSS\s+MARIJ\b", "Possession of Marijuana"),
-    (r"\bMAN\s*DEL\s+CS\b", "Manufacture or Delivery of Controlled Substance"),
-    (r"\bW/?DEADLY\s+WEAPON\b", "With Deadly Weapon"),
-    (r"\bW/?WEAPON\b", "With Weapon"),
-    (r"\bSERIOUS\s+BODILY\s+INJ(?:URY|RY)?\b", "Serious Bodily Injury"),
-    (r"\bBODILY\s+INJ(?:URY|RY)?\b", "Bodily Injury"),
-    (r"\bDOM\s+ASSLT\b", "Domestic Assault"),
-    (r"\bDOMESTIC\s+ASSLT\b", "Domestic Assault"),
-    (r"\bSIMPLE\s+ASSLT\b", "Simple Assault"),
-    (r"\bSMPL\s+ASSLT\b", "Simple Assault"),
-    (r"\bSEX\s+ASSLT\b", "Sexual Assault"),
-    (r"\bVIOL\s+BOND/?PROTECT(?:IVE)?\s+ORDER\b", "Violation of Bond or Protective Order"),
-    (r"\bDRIVING\s+WHILE\s+INTOXICATED\b", "Driving While Intoxicated"),
-    (r"\bFAILURE\s+TO\s+APPEAR\b", "Failure to Appear"),
-    (r"\bEVADING\s+ARREST(?:\s+(?:OR\s+)?DET(?:ENTION)?)?(?:\s+W/?\s*VEH(?:ICLE)?)?\b", "Evading Arrest"),
-    (r"\bFAIL(?:URE)?\s+TO\s+ID(?:ENTIFY)?\b", "Failure to Identify"),
-    (r"\bFUGITIVE\s+FRM\s+JUSTICE\b", "Fugitive from Justice"),
-    (r"\bENGAGING\s+IN\s+ORGANIZED\s+CRIMINAL\s+ACTIVITY\b", "Engaging in Organized Criminal Activity"),
-    (r"(?i)\bMTR\s*[-–—:]\s*", ""),
-    (r"\bMTR\s+(?=ENGAGING|EVADING|FAIL|POSS|ASSAULT|THEFT|SEXUAL)", ""),
-    (r"(?i)\bSEXUAL\s+ASSLT\b", "Sexual Assault"),
-    (r"\bOPER(?:ATING)?\s+(?:MTR\s+)?(?:MV|VEH(?:ICLE|ICAL)?)\s+U/?INFL(?:UENCE)?(?:\s+(?:OF\s+)?ALC(?:OHOL)?)?", "Operating Motor Vehicle Under the Influence of Alcohol"),
-    (r"\bU/?INFL(?:UENCE)?(?:\s+ALC(?:OHOL)?)?\b", "Under the Influence of Alcohol"),
-    (r"\bNO\s+OPERATOR'?S?(?:/MOPED)?\s+LICENSE\b", "No Operator License"),
-    (r"\bFLEE/?ELUDE\b", "Flee or Elude"),
-    (r"\bRESISTING\s+OFFICER\s+WITHOUT\s+VIOLENCE\b", "Resisting Officer Without Violence"),
-    (r"\bPOSS\.?\s+OF\s+WEAPON\s+IN\s+COMMISSION\s+OF\s+FELONY\b", "Possession of Weapon in Commission of Felony"),
-    (r"\bGRAND\s+THEFT\s+3RD\s+DEGREE[-\s]?FIREARM\b", "Grand Theft Firearm"),
-]
+from scraper.charge_expand_phrases import EXPAND_PHRASES
 
 # Whole-token map (applied after phrases). Keys are uppercase.
 _TOKENS = {
@@ -79,6 +40,8 @@ _TOKENS = {
     "INJ": "Injury",
     "INJRY": "Injury",
     "INJURY": "Injury",
+    "PHY": "Physical",
+    "PHYSICAL": "Physical",
     "FAMILY": "Family",
     "MEMBER": "Member",
     "ASSAULT": "Assault",
@@ -118,19 +81,36 @@ _TOKENS = {
     "JUSTICE": "Justice",
     "PAROLE": "Parole",
     "PROBATION": "Probation",
+    "PROB": "Probation",
+    "PAR": "Parole",
     "HOLD": "Hold",
     "ICE": "Immigration and Customs Enforcement",
     "IMMIGRATION": "Immigration",
+    "VEH": "Vehicle",
+    "VEHICLE": "Vehicle",
+    "MOTOR": "Motor",
+    "LARC": "Larceny",
+    "LARCENY": "Larceny",
+    "UNAUTH": "Unauthorized",
+    "UNAUTHORIZED": "Unauthorized",
+    "CONT": "Controlled",
+    "SUB": "Substance",
+    "SUBST": "Substance",
+    "OFF": "Offense",
+    "PUBLIC": "Public",
+    "OFFICER": "Officer",
+    "ENTER": "Enter",
+    "BREAK": "Breaking",
 }
 
 # Class letter at segment start: A/B/C misdemeanor, F felony.
-_CLASS_PREFIX = re.compile(
-    r"^\s*([ABC])\s+(?=[A-Za-z])",
-    re.IGNORECASE,
-)
+_CLASS_PREFIX = re.compile(r"^\s*([ABC])\s+(?=[A-Za-z])", re.IGNORECASE)
 _FELONY_PREFIX = re.compile(r"^\s*F\s+(?=[A-Za-z])", re.IGNORECASE)
 _SPLIT = re.compile(r"\s*[;|]\s*")
-_WORD = re.compile(r"[A-Za-z][A-Za-z'/.-]*|\d+(?:\.\d+)?|[^\s]")
+# Do not keep '/' inside tokens so BREAK/ENTER splits for mapping.
+_WORD = re.compile(r"[A-Za-z][A-Za-z'.-]*|\d+(?:st|nd|rd|th)?|\d+(?:\.\d+)?|[^\s]")
+_ORD_GLUED = re.compile(r"(?i)^(\d+)(st|nd|rd|th)$")
+
 
 def _expand_segment(segment: str) -> str:
     s = " ".join((segment or "").replace("\u00a0", " ").split())
@@ -146,21 +126,71 @@ def _expand_segment(segment: str) -> str:
         if m:
             class_note = "Felony "
             s = s[m.end() :]
-    for pat, repl in _PHRASES:
+    for pat, repl in EXPAND_PHRASES:
         s = re.sub(pat, repl, s, flags=re.IGNORECASE)
-    parts: List[str] = []
-    for tok in _WORD.findall(s):
-        key = tok.upper().rstrip(".")
-        if key in _TOKENS:
-            parts.append(_TOKENS[key])
-        elif tok.isalpha() and tok.isupper() and len(tok) <= 4 and key not in _TOKENS:
-            # Unknown short jail code: spell out letter-by-letter only if 1 char
-            parts.append(tok.title() if len(tok) > 1 else tok.upper())
-        else:
-            parts.append(tok if not tok.isalpha() else tok.title())
-    out = re.sub(r"\s+", " ", " ".join(parts)).strip(" ,.;:-")
+    # Protect compact statute fragments like 1/1-B before slash-splitting.
+    protected: list[str] = []
+
+    def _protect(m: re.Match) -> str:
+        protected.append(m.group(0))
+        return f" __P{len(protected) - 1}__ "
+
+    s = re.sub(r"\b\d+\s*/\s*\d+[A-Za-z0-9.-]*\b", _protect, s)
+    # Remaining jail slashes → spaces (DATE/FAMILY leftovers, etc.)
+    s = re.sub(r"\s*/\s*", " ", s)
+    for i, val in enumerate(protected):
+        s = s.replace(f"__P{i}__", val)
+    s = re.sub(r"\s+", " ", s).strip()
+    # Phrase output is already plain English — do not re-Title every word.
+    if not _needs_token_expand(s):
+        out = s
+    else:
+        parts: List[str] = []
+        for tok in _WORD.findall(s):
+            key = tok.upper().rstrip(".")
+            om = _ORD_GLUED.match(tok)
+            if om:
+                parts.append(f"{om.group(1)}{om.group(2).lower()}")
+                continue
+            if key in _TOKENS:
+                parts.append(_TOKENS[key])
+            elif tok.isalpha() and tok.isupper() and len(tok) <= 4 and key not in _TOKENS:
+                parts.append(tok.title() if len(tok) > 1 else tok.upper())
+            elif tok.isalpha() and tok.isupper():
+                parts.append(tok.title())
+            else:
+                parts.append(tok if not tok.isalpha() else tok.title())
+        out = re.sub(r"\s+", " ", " ".join(parts)).strip(" ,.;:-")
+    out = re.sub(r"\s+([,.;:])", r"\1", out)
+    out = re.sub(r"\(\s+", "(", out)
+    out = re.sub(r"\s+\)", ")", out)
     out = re.sub(r"\b(With)\s+\1\b", r"\1", out, flags=re.IGNORECASE)
+    # "1th Degree" from phrase backref fix when ordinal was 1ST
+    out = re.sub(
+        r"\b(\d+)th Degree\b",
+        lambda m: _ordinal_label(int(m.group(1))),
+        out,
+        flags=re.IGNORECASE,
+    )
     return (class_note + out).strip()
+
+
+def _needs_token_expand(text: str) -> bool:
+    """True when segment still has jail ALLCAPS codes needing token maps."""
+    for tok in _WORD.findall(text or ""):
+        if tok.isalpha() and tok.isupper() and len(tok) >= 2:
+            return True
+    return False
+
+
+def _ordinal_label(n: int) -> str:
+    mod100 = n % 100
+    if 10 < mod100 < 14:
+        suf = "th"
+    else:
+        suf = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suf} Degree"
+
 
 def expand_charge_text(text: str) -> str:
     """Expand abbreviations in raw charge text; keep multi-charge separators."""
@@ -170,8 +200,11 @@ def expand_charge_text(text: str) -> str:
     if not raw or is_non_charge(raw):
         return ""
     segs = [p for p in _SPLIT.split(raw) if p and p.strip()] or [raw]
-    expanded = [e for e in (_expand_segment(p) for p in segs) if e and not is_non_charge(e)]
+    expanded = [
+        e for e in (_expand_segment(p) for p in segs) if e and not is_non_charge(e)
+    ]
     return "; ".join(expanded)
+
 
 def expand_charge(record_or_text: Any) -> str:
     """Full plain-language charge for details and export cards."""
