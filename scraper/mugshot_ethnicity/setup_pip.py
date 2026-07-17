@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import time
 from typing import Callable, List, Optional
 
@@ -38,6 +39,11 @@ def _pip_install(
         cmd.append("--user")
     cmd.extend(packages_or_req)
 
+    no_win = (
+        int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
+        if sys.platform == "win32"
+        else 0
+    )
     for attempt in range(1, max(1, retries) + 1):
         _log(log, f"Installing DeepFace stack (attempt {attempt}/{retries}):\n  {' '.join(cmd)}")
         try:
@@ -46,6 +52,7 @@ def _pip_install(
                 capture_output=True,
                 text=True,
                 timeout=int(os.environ.get("SOR_DEEPFACE_PIP_TIMEOUT", "1800")),
+                creationflags=no_win,
             )
         except subprocess.TimeoutExpired:
             _log(log, "DeepFace pip install timed out")
