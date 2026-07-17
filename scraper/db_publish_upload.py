@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Set
 
 from scraper.db_publish_assets import release_notes, which
+from scraper.win_subprocess import run_kwargs
 
 
 def upload_progress_msg(done: int, total: int, label: str) -> str:
@@ -28,8 +29,7 @@ def publish_gh(
     notes = release_notes(man)
     check = subprocess.call(
         ["gh", "release", "view", tag, "--repo", repo],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        **run_kwargs(stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL),
     )
     if check != 0:
         create = [
@@ -45,15 +45,14 @@ def publish_gh(
             notes,
         ]
         print("Creating release… (0%)")
-        rc = subprocess.call(create)
+        rc = subprocess.call(create, **run_kwargs())
         if rc != 0:
             print("gh release create failed", rc)
             return rc
     else:
         subprocess.call(
             ["gh", "release", "edit", tag, "--repo", repo, "--notes", notes],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            **run_kwargs(stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL),
         )
         if prune_photos:
             gh_prune_obsolete_photos(repo, tag, {a.name for a in assets})
@@ -77,7 +76,7 @@ def publish_gh(
             repo,
             "--clobber",
         ]
-        rc = subprocess.call(cmd, env=env)
+        rc = subprocess.call(cmd, **run_kwargs(env=env))
         if rc != 0:
             print(f"Upload failed for {path.name} rc={rc}")
             return rc
@@ -96,9 +95,7 @@ def gh_prune_obsolete_photos(repo: str, tag: str, keep: Set[str]) -> None:
     try:
         cp = subprocess.run(
             ["gh", "api", f"repos/{repo}/releases/tags/{tag}"],
-            capture_output=True,
-            text=True,
-            timeout=60,
+            **run_kwargs(capture_output=True, text=True, timeout=60),
         )
         if cp.returncode != 0:
             return
@@ -115,8 +112,7 @@ def gh_prune_obsolete_photos(repo: str, tag: str, keep: Set[str]) -> None:
         print(f"Removing obsolete remote photo asset {name}…")
         subprocess.call(
             ["gh", "api", "-X", "DELETE", f"repos/{repo}/releases/assets/{aid}"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            **run_kwargs(stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL),
         )
 
 
@@ -229,7 +225,9 @@ def publish_api(
                     f"@{path}",
                     url,
                 ]
-                cp = subprocess.run(cmd, capture_output=True, timeout=7200)
+                cp = subprocess.run(
+                    cmd, **run_kwargs(capture_output=True, timeout=7200)
+                )
                 if cp.returncode != 0:
                     err = (cp.stderr or b"").decode("utf-8", errors="replace")[:400]
                     print(f"  FAIL curl rc={cp.returncode} {err}")

@@ -6,6 +6,8 @@ import subprocess
 from pathlib import Path
 from typing import List, Set
 
+from scraper.win_subprocess import run_kwargs
+
 
 def which(cmd: str) -> str:
     from shutil import which as _which
@@ -19,10 +21,12 @@ def git_cred_token() -> str:
         p = subprocess.run(
             ["git", "credential", "fill"],
             input="protocol=https\nhost=github.com\n\n",
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
+            **run_kwargs(
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            ),
         )
     except Exception:
         return ""
@@ -106,9 +110,11 @@ def remote_asset_names(repo: str, tag: str, *, token: str = "") -> Set[str]:
         try:
             cp = subprocess.run(
                 ["gh", "api", f"repos/{repo}/releases/tags/{tag}"],
-                capture_output=True,
-                text=True,
-                timeout=60,
+                **run_kwargs(
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                ),
             )
             if cp.returncode != 0:
                 return set()

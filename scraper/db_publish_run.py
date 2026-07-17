@@ -10,6 +10,7 @@ from typing import Callable, List, Optional
 from scraper.db_publish_gate import is_publish_allowed
 from scraper.db_publish_pending import clear_pending_listings
 from scraper.paths import project_root
+from scraper.win_subprocess import run_kwargs
 
 
 @dataclass
@@ -66,13 +67,15 @@ def run_database_publish(
     try:
         proc = subprocess.Popen(
             cmd,
-            cwd=str(root),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
+            **run_kwargs(
+                cwd=str(root),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+            ),
         )
         assert proc.stdout is not None
         for raw in proc.stdout:

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 import time
 from typing import Callable, List, Optional
 
@@ -18,6 +17,7 @@ from scraper.mugshot_ethnicity.setup_runtime import (
     _clear_ml_modules,
     invalidate_runtime_cache,
 )
+from scraper.win_subprocess import run_kwargs
 
 
 def _pip_install(
@@ -39,20 +39,16 @@ def _pip_install(
         cmd.append("--user")
     cmd.extend(packages_or_req)
 
-    no_win = (
-        int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
-        if sys.platform == "win32"
-        else 0
-    )
     for attempt in range(1, max(1, retries) + 1):
         _log(log, f"Installing DeepFace stack (attempt {attempt}/{retries}):\n  {' '.join(cmd)}")
         try:
             proc = subprocess.run(
                 cmd,
-                capture_output=True,
-                text=True,
-                timeout=int(os.environ.get("SOR_DEEPFACE_PIP_TIMEOUT", "1800")),
-                creationflags=no_win,
+                **run_kwargs(
+                    capture_output=True,
+                    text=True,
+                    timeout=int(os.environ.get("SOR_DEEPFACE_PIP_TIMEOUT", "1800")),
+                ),
             )
         except subprocess.TimeoutExpired:
             _log(log, "DeepFace pip install timed out")

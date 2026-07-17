@@ -79,9 +79,14 @@ def _git() -> Optional[str]:
 
 
 def _no_window() -> int:
-    if sys.platform == "win32":
-        return int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
-    return 0
+    try:
+        from scraper.win_subprocess import no_window_flags
+
+        return no_window_flags()
+    except Exception:
+        if sys.platform == "win32":
+            return int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
+        return 0
 
 
 def _run_git(
@@ -91,13 +96,16 @@ def _run_git(
     if not exe:
         return 127, "", "git not found"
     try:
+        from scraper.win_subprocess import run_kwargs
+
         p = subprocess.run(
             [exe, *args],
-            cwd=str(root),
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            creationflags=_no_window(),
+            **run_kwargs(
+                cwd=str(root),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            ),
         )
         return p.returncode, (p.stdout or "").strip(), (p.stderr or "").strip()
     except subprocess.TimeoutExpired:

@@ -58,6 +58,7 @@ tests/                         # Smoke suite split under tests/smoke/
 | `gui.py` | ≤200 | Desktop bootstrap: GitHub auto-update, deps check, launch `ArrestArchiverApp` |
 | `run_gui.bat` | — | Install core deps, start `pythonw gui.py` |
 | `Launch Arrest Archiver.vbs` | — | Double-click launcher (no console) |
+| `scraper/win_subprocess.py` | ≤40 | Windows `CREATE_NO_WINDOW` helpers — no console for background subprocesses |
 | `scraper/__main__.py` | ≤10 | CLI entry: `python -m scraper` |
 | `scraper/__init__.py` | ≤20 | Package marker / public re-exports |
 

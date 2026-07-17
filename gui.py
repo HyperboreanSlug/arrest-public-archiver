@@ -67,10 +67,9 @@ def _ensure_dependencies() -> None:
     else:
         cmd += need
     try:
-        flags = 0
-        if sys.platform == "win32":
-            flags = int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
-        subprocess.check_call(cmd, creationflags=flags)
+        from scraper.win_subprocess import run_kwargs
+
+        subprocess.check_call(cmd, **run_kwargs())
     except Exception as e:
         _fatal(
             "Missing packages and auto-install failed.\n\n"
