@@ -75,6 +75,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Use files already under data/downloads/{il_idoc,tx_tdcj}",
     )
+    psb.add_argument(
+        "--force-download",
+        action="store_true",
+        help="Re-download spreadsheets even if already present",
+    )
     psb.add_argument("--force", action="store_true")
     psb.add_argument("--database", "-d", default="data/arrests.db")
     psb.add_argument(

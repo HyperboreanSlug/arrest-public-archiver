@@ -31,6 +31,8 @@ SOCRATA_CSV = (
 
 def download_texas(
     out_dir: Path | str = Path("data/downloads/tx_tdcj"),
+    *,
+    force: bool = False,
 ) -> Path:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -40,16 +42,18 @@ def download_texas(
     xlsx = out / "High_Value_Data_Sets.xlsx"
     csv_path = out / "high_value.csv"
     try:
-        if not xlsx.is_file() or xlsx.stat().st_size < 100_000:
+        if force or not xlsx.is_file() or xlsx.stat().st_size < 100_000:
             log("  downloading TDCJ High_Value_Data_Sets.xlsx …")
             r = session.get(TDCJ_XLSX, timeout=300)
             r.raise_for_status()
             xlsx.write_bytes(r.content)
             log(f"  saved {xlsx.name} ({len(r.content):,} bytes)")
+        else:
+            log(f"  exists {xlsx.name}")
         return xlsx
     except Exception as e:
         log(f"  XLSX failed ({e}); trying open-data CSV …")
-        if not csv_path.is_file() or csv_path.stat().st_size < 100_000:
+        if force or not csv_path.is_file() or csv_path.stat().st_size < 100_000:
             r = session.get(SOCRATA_CSV, timeout=300)
             r.raise_for_status()
             csv_path.write_bytes(r.content)
@@ -145,13 +149,14 @@ def import_texas(
     limit: int = 0,
     force: bool = False,
     download: bool = True,
+    force_download: bool = False,
 ) -> Dict[str, int]:
     from scraper.database import Database
 
     data_dir = Path(data_dir)
     if download:
         log("Texas TDCJ: downloading High Value Dataset …")
-        path = download_texas(data_dir)
+        path = download_texas(data_dir, force=force_download)
     else:
         cands = list(data_dir.glob("*.xlsx")) + list(data_dir.glob("*.csv"))
         if not cands:

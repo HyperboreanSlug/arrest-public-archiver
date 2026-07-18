@@ -158,6 +158,7 @@ def cmd_import_state_bulk(args: argparse.Namespace) -> None:
         limit=int(args.limit or 0),
         force=bool(args.force),
         download=not bool(getattr(args, "no_download", False)),
+        force_download=bool(getattr(args, "force_download", False)),
         data_root=getattr(args, "data_root", None) or "data/downloads",
     )
     total_imp = sum(r.get("imported", 0) for r in results.values())

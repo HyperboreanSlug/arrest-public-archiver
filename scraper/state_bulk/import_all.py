@@ -51,6 +51,7 @@ def import_state_bulk(
     limit: int = 0,
     force: bool = False,
     download: bool = True,
+    force_download: bool = False,
     data_root: Path | str = Path("data/downloads"),
 ) -> Dict[str, Dict[str, int]]:
     """Download (optional) and import one or more state DOC bulk sources."""
@@ -69,6 +70,7 @@ def import_state_bulk(
                 limit=limit,
                 force=force,
                 download=download,
+                force_download=force_download,
             )
         elif key == "texas":
             from scraper.state_bulk.texas import import_texas
@@ -79,6 +81,7 @@ def import_state_bulk(
                 limit=limit,
                 force=force,
                 download=download,
+                force_download=force_download,
             )
         else:
             raise ValueError(key)
