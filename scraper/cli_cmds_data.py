@@ -128,6 +128,48 @@ def cmd_import(args: argparse.Namespace) -> None:
     print(f"Total imported: {total}")
 
 
+def cmd_import_nc_dac(args: argparse.Namespace) -> None:
+    from scraper.nc_dac.import_bulk import import_nc_dac_dir
+
+    r = import_nc_dac_dir(
+        args.input,
+        database=args.database or "data/arrests.db",
+        limit=int(args.limit or 0),
+        force=bool(args.force),
+        enrich_profile=not bool(args.no_profile),
+        active_only=bool(getattr(args, "active_only", False)),
+    )
+    print(
+        f"NC DAC import done: inmates_read={r['read']:,} "
+        f"pp_read={r.get('supervision_read', 0):,} "
+        f"imported={r['imported']:,} "
+        f"(pp {r.get('supervision_imported', 0):,}) "
+        f"skipped={r['skipped']:,} inactive={r.get('skipped_inactive', 0):,} "
+        f"no_name={r.get('no_name', 0):,}"
+    )
+
+
+def cmd_enrich_nc_dac(args: argparse.Namespace) -> None:
+    from scraper.nc_dac.enrich_photos import enrich_nc_dac_photos
+
+    r = enrich_nc_dac_photos(
+        database=args.database or "data/arrests.db",
+        output_root=args.photos or "data/photos/nc_dac",
+        limit=int(args.limit or 0),
+        delay=float(args.delay or 0.75),
+        force=bool(args.force),
+        active_only=bool(getattr(args, "active_only", False)),
+        inmates_only=bool(getattr(args, "inmates_only", False)),
+        missing_only=not bool(args.force),
+    )
+    print(
+        f"NC DAC photo enrich: docs={r['docs_done']:,} "
+        f"fetched={r['fetched']:,} cached={r['cached']:,} "
+        f"no_photo={r['no_photo']:,} errors={r['errors']:,} "
+        f"rows_updated={r['updated_rows']:,}"
+    )
+
+
 def cmd_search(args: argparse.Namespace) -> None:
     from .charge_classifications import category_label
     from .searcher import ArrestSearcher

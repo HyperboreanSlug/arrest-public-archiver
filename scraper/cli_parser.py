@@ -36,6 +36,63 @@ def build_parser() -> argparse.ArgumentParser:
     pi.add_argument("--force", action="store_true")
     pi.add_argument("--database", "-d", default="data/arrests.db")
 
+    pnc = sub.add_parser(
+        "import-nc-dac",
+        help="Import NC DAC bulk .dat tables (Inmate/Offender profiles)",
+    )
+    pnc.add_argument(
+        "--input",
+        "-i",
+        default="data/downloads/nc_dac",
+        help="Directory with INMT4AA1.dat/.des (and optional OFNT3AA1)",
+    )
+    pnc.add_argument("--limit", type=int, default=0, help="Max rows (0=all)")
+    pnc.add_argument(
+        "--active-only",
+        action="store_true",
+        help="Skip rows marked INACTIVE",
+    )
+    pnc.add_argument(
+        "--no-profile",
+        action="store_true",
+        help="Do not join OFNT3AA1 height/weight/hair/eyes",
+    )
+    pnc.add_argument("--force", action="store_true")
+    pnc.add_argument("--database", "-d", default="data/arrests.db")
+
+    penc = sub.add_parser(
+        "enrich-nc-dac",
+        help="Backfill NC DAC mugshots from public OPI (by DOC number)",
+    )
+    penc.add_argument("--limit", type=int, default=0, help="Max DOC candidates (0=all)")
+    penc.add_argument(
+        "--delay",
+        type=float,
+        default=0.75,
+        help="Seconds between OPI photo requests (default 0.75)",
+    )
+    penc.add_argument(
+        "--active-only",
+        action="store_true",
+        help="Only facility / ACTIVE admin rows (higher photo hit rate)",
+    )
+    penc.add_argument(
+        "--inmates-only",
+        action="store_true",
+        help="Skip probation/parole bulk ids (nc_dac_pp:)",
+    )
+    penc.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-fetch even when photo_path is already set",
+    )
+    penc.add_argument(
+        "--photos",
+        default="data/photos/nc_dac",
+        help="Directory for saved JPEGs",
+    )
+    penc.add_argument("--database", "-d", default="data/arrests.db")
+
     from .charge_classifications import list_category_choices
 
     charge_choices = list_category_choices(include_all=True)

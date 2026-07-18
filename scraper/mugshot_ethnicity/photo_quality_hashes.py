@@ -17,6 +17,8 @@ KNOWN_PLACEHOLDER_MD5: Set[str] = {
     "8558ffafb796af4dacd58e85145b3138",
     # mugshots.com gray "photo not available" tile (400×507 JPEG, ~8.9 KB)
     "acca619e6684d7ff5e7ad8d8a79ca6f3",
+    # NC DAC OPI "No Photo Available" tile (240×240 JPEG, ~4.8 KB)
+    "6685ef65a645d9bff9909240dbdb0644",
 }
 
 # Known site-chrome / stub hashes from archive audits (not real faces).

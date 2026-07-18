@@ -220,7 +220,7 @@ tests/                         # Smoke suite split under tests/smoke/
 |--------|----------|
 | `cli.py` | `main()` + argparse wiring |
 | `cli_parser.py` | Build argument parser |
-| `cli_cmds_data.py` | status, scrape, import, import-nc-dac, search |
+| `cli_cmds_data.py` | status, scrape, import, import-nc-dac, enrich-nc-dac, search |
 | `cli_cmds_analysis.py` | misclassify, mugshot, dedupe, reclassify |
 | `cli_cmds_rb.py` | recentlybooked live/scrape/misclassify |
 
@@ -290,18 +290,28 @@ tests/                         # Smoke suite split under tests/smoke/
 
 NC Department of Adult Correction public bulk downloads
 (https://webapps.doc.state.nc.us/opi/downloads.do?method=view). Fixed-width
-`.dat` + `.des` layouts. CLI: `python -m scraper import-nc-dac`.
+`.dat` + `.des` layouts.
+
+CLI:
+- `python -m scraper import-nc-dac` — load inmate + P&P tables
+- `python -m scraper enrich-nc-dac` — backfill mugshots from public OPI by DOC #
 
 | Module | Function |
 |--------|----------|
-| `__init__.py` | Package export (`import_nc_dac_dir`) |
+| `__init__.py` | Package export (`import_nc_dac_dir`, `enrich_nc_dac_photos`) |
 | `layout.py` | Parse `.des` field layouts |
 | `parse_dat.py` | Stream fixed-width `.dat` rows; DOC-id join index |
 | `map_records.py` | Map INMT4AA1 (inmate) / APPT7AA1 (P&P) → arrest records |
 | `import_bulk.py` | Batch import into SQLite (`data/arrests.db`) |
+| `opi_urls.py` | OPI detail + `viewPicture` URL builders |
+| `opi_photo.py` | Download one mugshot; reject “No Photo Available” tile |
+| `enrich_photos.py` | Scan DB candidates; polite fetch; set `photo_path` / `photo_url` |
 
-Related online tools (not bulk identity dumps): OPI offender search and ASQ
-stats query at https://www.dac.nc.gov/contacts/public-records-request/public-records-online
+Photos land under `data/photos/nc_dac/{DOC}.jpg`. Prefer `--active-only`
+(facility / ACTIVE admin) for higher hit rate. P&P/historical often have no photo.
+
+Related online tools: OPI offender search and ASQ stats query at
+https://www.dac.nc.gov/contacts/public-records-request/public-records-online
 
 ### RecentlyBooked (`scraper/recentlybooked/`)
 
