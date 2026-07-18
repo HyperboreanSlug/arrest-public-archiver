@@ -149,6 +149,25 @@ def cmd_import_nc_dac(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_import_state_bulk(args: argparse.Namespace) -> None:
+    from scraper.state_bulk.import_all import import_state_bulk
+
+    results = import_state_bulk(
+        args.state or "all",
+        database=args.database or "data/arrests.db",
+        limit=int(args.limit or 0),
+        force=bool(args.force),
+        download=not bool(getattr(args, "no_download", False)),
+        data_root=getattr(args, "data_root", None) or "data/downloads",
+    )
+    total_imp = sum(r.get("imported", 0) for r in results.values())
+    total_read = sum(r.get("read", 0) for r in results.values())
+    print(
+        f"State bulk done: sources={len(results)} read={total_read:,} "
+        f"imported={total_imp:,}"
+    )
+
+
 def cmd_enrich_nc_dac(args: argparse.Namespace) -> None:
     from scraper.nc_dac.enrich_photos import enrich_nc_dac_photos
 

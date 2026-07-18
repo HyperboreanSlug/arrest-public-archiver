@@ -60,6 +60,29 @@ def build_parser() -> argparse.ArgumentParser:
     pnc.add_argument("--force", action="store_true")
     pnc.add_argument("--database", "-d", default="data/arrests.db")
 
+    psb = sub.add_parser(
+        "import-state-bulk",
+        help="Import named state DOC bulk downloads (Illinois, Texas, …)",
+    )
+    psb.add_argument(
+        "--state",
+        default="all",
+        help="illinois, texas, or all (comma-separated OK)",
+    )
+    psb.add_argument("--limit", type=int, default=0, help="Max rows per source (0=all)")
+    psb.add_argument(
+        "--no-download",
+        action="store_true",
+        help="Use files already under data/downloads/{il_idoc,tx_tdcj}",
+    )
+    psb.add_argument("--force", action="store_true")
+    psb.add_argument("--database", "-d", default="data/arrests.db")
+    psb.add_argument(
+        "--data-root",
+        default="data/downloads",
+        help="Root for state bulk folders",
+    )
+
     penc = sub.add_parser(
         "enrich-nc-dac",
         help="Backfill NC DAC mugshots from public OPI (by DOC number)",

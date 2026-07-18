@@ -220,7 +220,7 @@ tests/                         # Smoke suite split under tests/smoke/
 |--------|----------|
 | `cli.py` | `main()` + argparse wiring |
 | `cli_parser.py` | Build argument parser |
-| `cli_cmds_data.py` | status, scrape, import, import-nc-dac, enrich-nc-dac, search |
+| `cli_cmds_data.py` | status, scrape, import, import-nc-dac, import-state-bulk, enrich-nc-dac, search |
 | `cli_cmds_analysis.py` | misclassify, mugshot, dedupe, reclassify |
 | `cli_cmds_rb.py` | recentlybooked live/scrape/misclassify |
 
@@ -285,6 +285,25 @@ tests/                         # Smoke suite split under tests/smoke/
 | `live.py` | Parallel live feeds per host |
 | `balanced.py` | Load-balanced full scrape |
 | `geo.py` | Discover counties; scrape one geo on one host |
+
+### State DOC bulk downloads (`scraper/state_bulk/`)
+
+Named offender spreadsheets from state corrections open-data portals
+(not county jail aggregators). CLI: `python -m scraper import-state-bulk --state all`.
+
+| Source | Portal | What |
+|--------|--------|------|
+| **Illinois IDOC** | [Population data sets](https://idoc.illinois.gov/reportsandstatistics/populationdatasets.html) | Named XLS: prison pop, parole, admissions, exits (name, DOB, race, offense) |
+| **Texas TDCJ** | [High Value Data Sets.xlsx](https://www.tdcj.texas.gov/documents/High_Value_Data_Sets.xlsx) | ~140k named current inmates (race, offense, facility) |
+
+| Module | Function |
+|--------|----------|
+| `__init__.py` | Export `import_state_bulk` |
+| `common.py` | Name/race/sex/date helpers, batch flush |
+| `xls_io.py` | Read IDOC-style XLS/XLSX (skip title banner) |
+| `illinois.py` | Download + map + import IDOC files → `il_idoc` |
+| `texas.py` | Download + map + import TDCJ high-value → `tx_tdcj` |
+| `import_all.py` | Registry + dispatch (`illinois`, `texas`, `all`) |
 
 ### NC DAC bulk tables (`scraper/nc_dac/`)
 
