@@ -88,13 +88,19 @@ _AFFIX = re.compile(r"^([(\"'\[]*)(.*?)([.,;:\"'\)\]]*)$")
 
 
 def limit_charge_labels(text: str, max_labels: int) -> str:
-    """Keep the first N semicolon-separated labels so cards stay readable."""
+    """Keep the first N charge labels so cards stay readable."""
     if max_labels <= 0:
         return text
-    parts = [p.strip() for p in str(text or "").split(";") if p.strip()]
+    raw = str(text or "")
+    if " · " in raw:
+        parts = [p.strip() for p in raw.split(" · ") if p.strip()]
+        sep = " · "
+    else:
+        parts = [p.strip() for p in raw.split(";") if p.strip()]
+        sep = " · "
     if len(parts) <= max_labels:
-        return "; ".join(parts)
-    return "; ".join(parts[:max_labels]) + "; …"
+        return sep.join(parts)
+    return sep.join(parts[:max_labels]) + " · …"
 
 
 def _ordinal_degree(match: re.Match) -> str:
@@ -166,10 +172,22 @@ def _proper_word(core: str, *, first: bool) -> str:
     return core
 
 
+def normalize_charge_separators(text: str) -> str:
+    """Structural joins → middle-dot `` · `` only (parity with SORPA)."""
+    t = text or ""
+    t = re.sub(r"\s*[—–]\s*", " · ", t)
+    t = re.sub(r"\s+-\s+", " · ", t)
+    t = re.sub(r"\s*;\s*", " · ", t)
+    t = re.sub(r"(?:\s*·\s*)+", " · ", t)
+    t = re.sub(r"\s{2,}", " ", t)
+    return t.strip(" ·;,|")
+
+
 def card_charge_text(text: str) -> str:
     """Proper-case every charge line (no mixed ALLCAPS/Title leftovers)."""
+    text = normalize_charge_separators(text)
     parts: list[str] = []
-    for raw in str(text or "").split(";"):
+    for raw in str(text or "").split(" · "):
         s = " ".join(raw.split()).strip()
         if not s:
             continue
@@ -182,4 +200,4 @@ def card_charge_text(text: str) -> str:
             pre, core, suf = m.groups() if m else ("", w, "")
             fixed.append(pre + _proper_word(core, first=(i == 0)) + suf)
         parts.append(" ".join(fixed))
-    return "; ".join(parts) if parts else str(text or "").strip()
+    return " · ".join(parts) if parts else str(text or "").strip()

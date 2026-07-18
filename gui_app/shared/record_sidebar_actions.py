@@ -40,11 +40,21 @@ class RecordSidebarActionsMixin:
                 path = export_record_card_to_desktop(record)
 
                 def ok() -> None:
+                    if isinstance(self._record, dict):
+                        if record.get("export_number") is not None:
+                            self._record["export_number"] = record["export_number"]
+                        if record.get("flags") is not None:
+                            self._record["flags"] = record["flags"]
                     self.export_btn.configure(
                         state="normal", text="Export card to Desktop"
                     )
+                    num = record.get("export_number")
+                    badge = f" · export #{num}" if num else ""
                     self.verdict_status.configure(
-                        text=f"Saved card → {path.name}",
+                        text=(
+                            f"Saved card → {path.name}{badge}"
+                            f" · confirmed incorrect"
+                        ),
                         text_color=C["success"],
                     )
 
@@ -74,6 +84,8 @@ class RecordSidebarActionsMixin:
                 value = expand_charge(record)
             else:
                 value = first_field(record, keys)
+            if label == "Name" and value != "—":
+                value = str(value).upper()
             if label == "Race" and value != "—":
                 value = format_race_label(value)
             if value != "—":

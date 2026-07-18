@@ -144,11 +144,12 @@ class MisclassifyBuildMixin:
 
     @staticmethod
     def _browse_name(record: Dict[str, Any]) -> str:
-        return (
+        name = (
             str(record.get("full_name") or "").strip()
             or f"{record.get('first_name') or ''} {record.get('last_name') or ''}".strip()
             or "—"
         )
+        return name.upper() if name and name != "—" else name
 
     def _browse_row_values(self, record: Dict[str, Any]) -> tuple:
         raw_actual = (record.get("likely_ethnicity") or "").strip()

@@ -100,6 +100,8 @@ class DeepfaceReportsFiltersMixin:
             name = (
                 f"{rec.get('first_name') or ''} {rec.get('last_name') or ''}"
             ).strip() or (rec.get("full_name") or "—")
+            if name and name != "—":
+                name = str(name).upper()
             df = rec.get("_deepface") or {}
             face = df.get("predicted_label") or df.get("top_label") or "—"
             sev = df.get("severity") or ""

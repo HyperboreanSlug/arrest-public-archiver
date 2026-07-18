@@ -96,10 +96,12 @@ tests/                         # Smoke suite split under tests/smoke/
 | `verdict_persist.py` | Save + verify ethnicity_review flags to DB (propagates to identity siblings) |
 | `scraper/identity_review.py` | Person keys, sibling lookup, classification queue dedupe |
 | `export_card.py` | Public API: `render_export_card`, `export_record_card_to_desktop` |
-| `export_card_fields.py` | Name/location/crime/date extractors, fonts; card crime uses descriptive plain-language offenses |
-| `export_card_polish.py` | Strip codes/meta and proper-case charge lines for export cards |
+| `export_card_fields.py` | Name (**UPPERCASE**)/location/crime extractors; footer export No. (assign only on deliberate export) |
+| `export_card_polish.py` | Strip codes/meta; regular-case charges; structural joins → middle-dot `` · `` |
+| `export_card_release.py` | Persistent export No. per person (`arrests.export_number` + `data/card_release.json`) |
+| `export_card_confirm.py` | Export auto-marks **Confirmed incorrect** (`ethnicity_review`) — parity with SORPA |
 | `export_card_photo.py` | Mugshot load, seal watermark prep |
-| `export_card_render.py` | Compose card image (including red race banner) |
+| `export_card_render.py` | Compose card (race banner, large crime, location+date left, export No. right) |
 | `detail_drawer.py` | Small detail drawer for Search |
 
 ### Browse tab (`gui_app/tabs/browse/`)
@@ -218,7 +220,7 @@ tests/                         # Smoke suite split under tests/smoke/
 |--------|----------|
 | `cli.py` | `main()` + argparse wiring |
 | `cli_parser.py` | Build argument parser |
-| `cli_cmds_data.py` | status, scrape, import, search |
+| `cli_cmds_data.py` | status, scrape, import, import-nc-dac, search |
 | `cli_cmds_analysis.py` | misclassify, mugshot, dedupe, reclassify |
 | `cli_cmds_rb.py` | recentlybooked live/scrape/misclassify |
 
@@ -283,6 +285,23 @@ tests/                         # Smoke suite split under tests/smoke/
 | `live.py` | Parallel live feeds per host |
 | `balanced.py` | Load-balanced full scrape |
 | `geo.py` | Discover counties; scrape one geo on one host |
+
+### NC DAC bulk tables (`scraper/nc_dac/`)
+
+NC Department of Adult Correction public bulk downloads
+(https://webapps.doc.state.nc.us/opi/downloads.do?method=view). Fixed-width
+`.dat` + `.des` layouts. CLI: `python -m scraper import-nc-dac`.
+
+| Module | Function |
+|--------|----------|
+| `__init__.py` | Package export (`import_nc_dac_dir`) |
+| `layout.py` | Parse `.des` field layouts |
+| `parse_dat.py` | Stream fixed-width `.dat` rows; DOC-id join index |
+| `map_records.py` | Map INMT4AA1 (inmate) / APPT7AA1 (P&P) → arrest records |
+| `import_bulk.py` | Batch import into SQLite (`data/arrests.db`) |
+
+Related online tools (not bulk identity dumps): OPI offender search and ASQ
+stats query at https://www.dac.nc.gov/contacts/public-records-request/public-records-online
 
 ### RecentlyBooked (`scraper/recentlybooked/`)
 
@@ -435,7 +454,8 @@ tests/                         # Smoke suite split under tests/smoke/
 
 | Change | Module(s) |
 |--------|-----------|
-| Race banner on export card | `export_card_render.py` (premium layout: foil name, Reported As, crime panel, location/date footer) |
+| Race banner on export card | `export_card_render.py` (premium layout: UPPERCASE foil name, Reported As, crime panel, location+date, export No.) |
+| Export card parity (SORPA) | UPPERCASE names · export No. · auto-confirm incorrect · middle-dot charge separators · Mack shared-surname |
 | Placeholder mugshot detection | `photo_quality_*.py` |
 | Live Feed source checkboxes | `recentlybooked/live_sources.py` |
 | Multi-host county split | `mugshot_sources/partition.py`, `balanced.py` |

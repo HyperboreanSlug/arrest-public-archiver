@@ -22,6 +22,8 @@ class SearchTabMixin:
         self.search_tree.delete(*self.search_tree.get_children())
         for x in r.records:
             name=x.get("full_name") or f"{x.get('first_name') or ''} {x.get('last_name') or ''}".strip()
+            if name:
+                name = str(name).upper()
             self.search_tree.insert("","end",values=(x["id"],name,format_race_label(x.get("race") or ""),summarize_charge(x),x.get("charge_category") or "",x.get("state") or "",x.get("arrest_date") or x.get("booking_date") or "",x.get("source_system") or ""))
     def _open_search_detail(self,_event):
         sel=self.search_tree.selection()

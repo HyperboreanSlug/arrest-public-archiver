@@ -4,7 +4,10 @@ from __future__ import annotations
 from typing import List, Optional, Tuple
 
 from scraper.ethnic_names_asian_unique import matches_are_only_asian
-from scraper.ethnic_names_black_unique import is_black_only_name_combo
+from scraper.ethnic_names_black_unique import (
+    is_black_only_name_combo,
+    is_shared_black_white_surname,
+)
 
 
 def _is_black_family_label(ethnicity: str) -> bool:
@@ -64,13 +67,22 @@ class EthnicNamesClassifyMixin:
         # High Black conf only for AA first name + uniquely Black surname.
         # Use AA list membership (not primary signal) so dual-listed given
         # names like Jamal/Malik still qualify with uniquely Black surnames.
+        aa_first = self._has_african_american_given_name(first_name, middle_name)
         black_only_combo = is_black_only_name_combo(
             surname_lc,
-            has_aa_first_name=self._has_african_american_given_name(
-                first_name, middle_name
-            ),
+            has_aa_first_name=aa_first,
             matches=matches,
         )
+        # Shared White/Black surnames (Mack, Washington): keep AA only with AA given name
+        # (SORPA parity). Christopher Mack → no tag; DeShawn Mack → AA.
+        shared_bw = is_shared_black_white_surname(surname_lc)
+        allow_black = black_only_combo or (shared_bw and aa_first)
+        if not allow_black:
+            matches = [
+                m for m in matches if not _is_black_family_label(m[0])
+            ]
+            if not matches:
+                return ("Unknown", 0.0, [])
 
         def sort_key(item: Tuple[str, str]) -> float:
             ethnicity, _source = item
@@ -106,8 +118,8 @@ class EthnicNamesClassifyMixin:
             elif ethnicity.startswith("Asian"):
                 score = 1.0 if only_asian else 0.25
             elif ethnicity == "African American":
-                # Require Black-only first + uniquely Black last.
-                score = 1.45 if black_only_combo else 0.25
+                # High conf for unique Black combo, or shared surname + AA first name.
+                score = 1.45 if allow_black else 0.25
             elif ethnicity in ("Jewish", "Portuguese", "Arabic"):
                 score = 0.85
                 if ethnicity == "Portuguese" and fn_signal == "hispanic":
@@ -115,7 +127,7 @@ class EthnicNamesClassifyMixin:
                 if ethnicity == "Portuguese" and fn_signal == "indian":
                     score += 0.15
             elif ethnicity.startswith("African ("):
-                score = 1.0 if black_only_combo else 0.25
+                score = 1.0 if allow_black else 0.25
             elif ethnicity == "Native American":
                 score = 0.55
             elif ethnicity.startswith("European"):
@@ -174,8 +186,8 @@ class EthnicNamesClassifyMixin:
         if best_match.startswith("Asian") and not only_asian:
             confidence = min(confidence, 0.35)
 
-        # Name alone must not flag White as Black unless Black-only first+last.
-        if _is_black_family_label(best_match) and not black_only_combo:
+        # Name alone must not flag White as Black unless allowed Black combo.
+        if _is_black_family_label(best_match) and not allow_black:
             confidence = min(confidence, 0.35)
 
         return (best_match, confidence, [m[0] for m in matches])

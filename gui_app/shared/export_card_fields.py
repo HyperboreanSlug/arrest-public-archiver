@@ -81,15 +81,17 @@ def load_font(size: int, *, bold: bool = False) -> ImageFont.ImageFont:
 
 
 def person_name(record: Mapping[str, Any]) -> str:
+    """Display name for cards — always fully UPPERCASE (parity with SORPA)."""
     full = str(record.get("full_name") or "").strip()
     if full:
-        return full
+        return full.upper()
     parts = [
         str(record.get("first_name") or "").strip(),
         str(record.get("middle_name") or "").strip(),
         str(record.get("last_name") or "").strip(),
     ]
-    return " ".join(p for p in parts if p) or "Unknown"
+    out = " ".join(p for p in parts if p)
+    return out.upper() if out else "UNKNOWN"
 
 
 def location(record: Mapping[str, Any]) -> str:
@@ -135,11 +137,12 @@ def crime(record: Mapping[str, Any], *, max_labels: int = 5) -> str:
     return cat.replace("_", " ").title() if cat else "Unknown charge"
 
 
-def arrest_datetime(record: Mapping[str, Any]) -> str:
+def arrest_date_label(record: Mapping[str, Any]) -> str:
+    """Arrest/booking date for footer left (with location)."""
     date = str(record.get("arrest_date") or record.get("booking_date") or "").strip()
     time = str(record.get("arrest_time") or "").strip()
     if not date:
-        return "Unknown"
+        return ""
     if "T" in date:
         d, _, t = date.partition("T")
         date = d
@@ -148,3 +151,21 @@ def arrest_datetime(record: Mapping[str, Any]) -> str:
     if time:
         return f"{date} {time}".strip()
     return date
+
+
+def arrest_datetime(record: Mapping[str, Any], *, assign: bool = False) -> str:
+    """Footer right-side label: persistent export No. (SORPA chassis parity).
+
+    Name kept for mapa chassis compatibility. Assigns a new number only when
+    ``assign=True`` (deliberate Desktop export). Peek-only otherwise.
+    """
+    from gui_app.shared.export_card_release import (
+        format_release_label,
+        peek_release_number,
+        release_number_for,
+    )
+
+    if assign:
+        return format_release_label(release_number_for(record, persist_db=True))
+    n = peek_release_number(record)
+    return format_release_label(n) if n is not None else ""

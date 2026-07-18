@@ -107,6 +107,7 @@ class SchemaMixin:
             ("eyes", "TEXT"),
             ("height", "TEXT"),
             ("weight", "TEXT"),
+            ("export_number", "INTEGER"),
         ):
             if col not in cols:
                 c.execute(f"ALTER TABLE arrests ADD COLUMN {col} {typ}")

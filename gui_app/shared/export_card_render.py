@@ -37,14 +37,21 @@ from scraper.searcher import format_race_label
 # Layout scale (matches premium HTML card proportions on 1080×1350).
 _PAD = 48
 _NAME_SIZE = 52
-_CRIME_H = 100
+_CRIME_H = 128
 _BANNER_H = 96
-_FOOTER_H = 56
-_NUMBER_SIZE = 36  # bottom-right export No. (larger than location text)
+_FOOTER_H = 68
+_NUMBER_SIZE = 52  # bottom-right export No. — large (SORPA parity)
 
 
-def render_export_card(record: Mapping[str, Any]) -> Image.Image:
-    """Build an RGBA premium share card for *record*."""
+def render_export_card(
+    record: Mapping[str, Any], *, assign_number: bool = False
+) -> Image.Image:
+    """Build an RGBA premium share card for *record*.
+
+    ``assign_number`` only for deliberate Desktop exports (never bare preview).
+    """
+    from gui_app.shared.export_card_fields import arrest_date_label
+
     canvas = Image.new("RGBA", (_CARD_W, _CARD_H), _BG)
     draw = ImageDraw.Draw(canvas)
     _draw_foil_sheen(canvas)
@@ -53,10 +60,18 @@ def render_export_card(record: Mapping[str, Any]) -> Image.Image:
     race = format_race_label(str(record.get("race") or "").strip()) or "Unknown"
     loc = location(record)
     cr = crime(record)
-    arrest_dt = arrest_datetime(record)
+    # Footer right: export No.; left can include arrest date
+    release_lbl = arrest_datetime(record, assign=assign_number)
+    date_lbl = arrest_date_label(record)
+    if date_lbl and loc and loc != "Unknown location":
+        loc_left = f"{loc}  ·  {date_lbl}"
+    elif date_lbl:
+        loc_left = date_lbl
+    else:
+        loc_left = loc
 
     name_font = load_font(_NAME_SIZE, bold=True)
-    crime_font = load_font(28)
+    crime_font = load_font(42, bold=True)
     footer_font = load_font(22)
     number_font = load_font(_NUMBER_SIZE, bold=True)
     reported_font = load_font(22, bold=True)
@@ -106,7 +121,14 @@ def render_export_card(record: Mapping[str, Any]) -> Image.Image:
     )
     y = _draw_crime_panel(draw, cr, y + 12, _PAD, max_text_w, crime_font)
     _draw_footer(
-        draw, loc, arrest_dt, y + 14, _PAD, max_text_w, footer_font, number_font
+        draw,
+        loc_left,
+        release_lbl,
+        y + 14,
+        _PAD,
+        max_text_w,
+        footer_font,
+        number_font,
     )
     return canvas
 
@@ -201,10 +223,10 @@ def _draw_crime_panel(
     box = (margin, y, _CARD_W - margin, y + _CRIME_H)
     draw.rounded_rectangle(box, radius=18, fill=_CRIME_PANEL, outline=_LINE, width=2)
     lines = wrap_text(draw, text or "—", font, max_w - 36)[:3]
-    ty = y + 18
+    ty = y + 14
     for line in lines:
-        draw.text((margin + 18, ty), line, font=font, fill=_MUTED)
-        ty += 28
+        draw.text((margin + 18, ty), line, font=font, fill=_TEXT)
+        ty += 36
     return y + _CRIME_H
 
 
@@ -247,15 +269,26 @@ def _draw_footer(
 
 
 def export_record_card_to_desktop(record: Mapping[str, Any]) -> Path:
-    """Render and save a PNG card to the user's Desktop; return the path."""
-    img = render_export_card(record)
+    """Render and save a PNG card to the user's Desktop; return the path.
+
+    Deliberate export: mints export No., marks confirmed incorrect (SORPA parity).
+    """
+    img = render_export_card(record, assign_number=True)
     desktop = desktop_dir()
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    name = safe_filename(person_name(record))
+    name = safe_filename(person_name(record) or "arrest")
     out = desktop / f"{name}_{stamp}.png"
     n = 1
     while out.exists():
         out = desktop / f"{name}_{stamp}_{n}.png"
         n += 1
     img.convert("RGB").save(out, format="PNG", optimize=True)
+    try:
+        from gui_app.shared.export_card_confirm import (
+            mark_export_confirmed_incorrect,
+        )
+
+        mark_export_confirmed_incorrect(record)
+    except Exception:
+        pass
     return out
