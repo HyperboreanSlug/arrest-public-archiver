@@ -14,6 +14,7 @@ class QuerySearchMixin:
         race: Optional[str] = None,
         charge_category: Optional[str] = None,
         source_system: Optional[str] = None,
+        since_date: Optional[str] = None,
         limit: int = 1000,
         offset: int = 0,
     ) -> List[Dict[str, Any]]:
@@ -23,6 +24,7 @@ class QuerySearchMixin:
             race=race,
             charge_category=charge_category,
             source_system=source_system,
+            since_date=since_date,
             limit=limit,
             offset=offset,
         )
@@ -38,6 +40,7 @@ class QuerySearchMixin:
         ethnicity_review: Optional[str] = None,
         charge_category: Optional[str] = None,
         source_system: Optional[str] = None,
+        since_date: Optional[str] = None,
         limit: int = 1000,
         offset: int = 0,
     ) -> List[Dict[str, Any]]:
@@ -45,6 +48,13 @@ class QuerySearchMixin:
         offset = max(0, int(offset))
         q = "SELECT * FROM arrests WHERE 1=1"
         params: List[Any] = []
+        if since_date and str(since_date).strip():
+            from scraper.database.date_window import sql_since_date
+
+            frag, frag_params = sql_since_date(str(since_date).strip())
+            if frag:
+                q += frag
+                params.extend(frag_params)
         if name and str(name).strip():
             esc = _escape_like(str(name).strip())
             term = f"%{esc}%"

@@ -36,68 +36,98 @@ class MisclassifyBuildMixin:
         tab.configure(fg_color=C["surface"])
         controls = ctk.CTkFrame(tab, fg_color=C["panel"])
         controls.pack(fill="x", padx=8, pady=8)
+        from gui_app.tabs.recentlybooked.full_scrape_flow import (
+            FlowRow,
+            after_idle_reflow,
+        )
+
+        flow = FlowRow(controls, padx=5, pady=4)
+        host = flow.host
 
         races = ["All"] + self._browse_race_choices()
         actuals = ["All"] + list(BROWSE_ACTUAL_RACES)
 
+        def _lbl(text: str):
+            return ctk.CTkLabel(
+                host, text=text, font=FONT_SM, text_color=C["muted"]
+            )
+
         self.browse_stated_race = ctk.CTkComboBox(
-            controls, values=races, width=120, command=self._browse_filter_changed
+            host, values=races, width=120, command=self._browse_filter_changed
         )
         self.browse_actual_race_filter = ctk.CTkComboBox(
-            controls,
+            host,
             values=actuals,
             width=150,
             command=self._browse_filter_changed,
         )
         self.browse_review = ctk.CTkComboBox(
-            controls,
+            host,
             values=VERIFICATION_FILTERS,
             width=170,
             command=self._browse_filter_changed,
         )
+        # Last N days / weeks (empty amount = any time)
+        self.browse_window_amount = ctk.CTkEntry(
+            host, width=52, placeholder_text="any"
+        )
+        self.browse_window_unit = ctk.CTkComboBox(
+            host,
+            values=["days", "weeks"],
+            width=78,
+            command=self._browse_filter_changed,
+        )
+        self.browse_window_unit.set("days")
+        self.browse_window_amount.bind(
+            "<Return>", lambda _e: self._browse_filter_changed()
+        )
         # Default cap keeps multi-million DOC DBs from OOM on auto-refresh.
         # 0 = "all" but GUI clamps to BROWSE_HARD_MAX in the refresh path.
         self.browse_limit = ctk.CTkEntry(
-            controls, width=90, placeholder_text=str(BROWSE_DEFAULT_LIMIT)
+            host, width=90, placeholder_text=str(BROWSE_DEFAULT_LIMIT)
         )
         self.browse_stated_race.set("All")
         self.browse_actual_race_filter.set("All")
         self.browse_review.set("Unverified")
         self.browse_limit.insert(0, str(BROWSE_DEFAULT_LIMIT))
         self.browse_misclass_only = ctk.CTkCheckBox(
-            controls,
+            host,
             text="Suspected misclassifications only",
             font=FONT_SM,
             command=self._browse_filter_changed,
         )
-
-        for label, widget in (
-            ("Stated race", self.browse_stated_race),
-            ("Actual race", self.browse_actual_race_filter),
-            ("Confirmation", self.browse_review),
-            ("Limit", self.browse_limit),
-        ):
-            ctk.CTkLabel(controls, text=label, font=FONT_SM, text_color=C["muted"]).pack(
-                side="left", padx=(10, 3), pady=10
-            )
-            widget.pack(side="left", padx=(0, 6), pady=10)
-
-        self.browse_misclass_only.pack(side="left", padx=(10, 8), pady=10)
         self.browse_refresh_btn = ctk.CTkButton(
-            controls, text="Refresh", command=self._browse_refresh
+            host, text="Refresh", command=self._browse_refresh
         )
-        self.browse_refresh_btn.pack(side="left", padx=8)
-        ctk.CTkButton(controls, text="Export CSV", command=self._browse_export).pack(
-            side="left", padx=4
+        export_btn = ctk.CTkButton(
+            host, text="Export CSV", command=self._browse_export
         )
-
         self.browse_status = ctk.CTkLabel(
-            controls,
+            host,
             text="Filter arrests and review with the sidebar. Confirmed stay out of Unverified.",
             font=FONT_SM,
             text_color=C["muted"],
         )
-        self.browse_status.pack(side="left", padx=12)
+        for w in (
+            _lbl("Stated race"),
+            self.browse_stated_race,
+            _lbl("Actual race"),
+            self.browse_actual_race_filter,
+            _lbl("Confirmation"),
+            self.browse_review,
+            _lbl("Last"),
+            self.browse_window_amount,
+            self.browse_window_unit,
+            _lbl("Limit"),
+            self.browse_limit,
+            self.browse_misclass_only,
+            self.browse_refresh_btn,
+            export_btn,
+            self.browse_status,
+        ):
+            flow.add(w)
+        after_idle_reflow(self, flow)
+        controls.bind("<Configure>", lambda _e: flow.reflow(), add="+")
 
         self.mc_status = self.browse_status
         self.mc_analyze_btn = self.browse_refresh_btn
@@ -137,6 +167,21 @@ class MisclassifyBuildMixin:
         if getattr(self, "_browse_busy", False):
             return
         self._browse_refresh()
+
+    def _browse_since_date(self) -> Optional[str]:
+        """ISO cutoff from Last N days/weeks controls, or None for any time."""
+        try:
+            from scraper.database.date_window import resolve_cutoff
+
+            amount = ""
+            unit = "days"
+            if getattr(self, "browse_window_amount", None) is not None:
+                amount = self.browse_window_amount.get()
+            if getattr(self, "browse_window_unit", None) is not None:
+                unit = self.browse_window_unit.get()
+            return resolve_cutoff(amount, unit)
+        except Exception:
+            return None
 
     @staticmethod
     def _browse_verification_query(label: Optional[str]) -> Optional[str]:

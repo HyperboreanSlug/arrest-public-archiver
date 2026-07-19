@@ -71,6 +71,7 @@ class ArrestSearcher:
         race: Optional[str] = None,
         charge_category: Optional[str] = None,
         source_system: Optional[str] = None,
+        since_date: Optional[str] = None,
         limit: int = 1000,
     ) -> SearchResults:
         start = time.time()
@@ -80,6 +81,7 @@ class ArrestSearcher:
             race=race,
             charge_category=charge_category,
             source_system=source_system,
+            since_date=since_date,
             limit=limit,
         )
         return SearchResults(
@@ -92,6 +94,7 @@ class ArrestSearcher:
                 "race": race or "",
                 "charge_category": charge_category or "",
                 "source_system": source_system or "",
+                "since_date": since_date or "",
             },
         )
 

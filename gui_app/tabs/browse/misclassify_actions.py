@@ -63,11 +63,15 @@ class MisclassifyActionsMixin:
                         if review_q in ("unreviewed", "unverified", "none", "unset")
                         else None
                     )
+                    since = None
+                    if hasattr(self, "_browse_since_date"):
+                        since = self._browse_since_date()
                     rows = db.search_records(
                         race=None if stated in ("All", "", None) else stated,
                         likely_ethnicity=likely_one,
                         likely_ethnicity_in=likely_in,
                         ethnicity_review=review_q,
+                        since_date=since,
                         limit=fetch_limit,
                     )
                     if misclass_only:
@@ -120,6 +124,18 @@ class MisclassifyActionsMixin:
             msg += f" (capped at {limit:,} for memory safety)"
         elif limit and n >= limit:
             msg += f" (limit {limit:,})"
+        try:
+            if hasattr(self, "_browse_since_date") and self._browse_since_date():
+                amt = ""
+                unit = "days"
+                if getattr(self, "browse_window_amount", None) is not None:
+                    amt = (self.browse_window_amount.get() or "").strip()
+                if getattr(self, "browse_window_unit", None) is not None:
+                    unit = (self.browse_window_unit.get() or "days").strip()
+                if amt:
+                    msg += f" · last {amt} {unit}"
+        except Exception:
+            pass
         self.browse_status.configure(text=msg)
         self.browse_sidebar.clear("Select a row for photo and review.")
 

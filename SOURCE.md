@@ -113,10 +113,10 @@ tests/                         # Smoke suite split under tests/smoke/
 | `misclassify_constants.py` | Column labels + verification filter maps |
 | `misclassify_suspect.py` | Filter rows to surname-vs-race misclass suspects |
 | `misclassify_verdict.py` | Persist verification; correct → actual=stated race |
-| `misclassify_build.py` | Filters UI (stated race, actual race, confirmation) |
+| `misclassify_build.py` | Filters UI (stated race, actual race, confirmation, last N days/weeks) |
 | `misclassify_actions.py` | Refresh, verification save, actual-race save |
 | `misclassify_export.py` | CSV export, row drop after filter change |
-| `search.py` | Name/state/race/charge search UI |
+| `search.py` | Name/state/race/charge + last N days/weeks search UI |
 | `statistics.py` | Archive stats charts |
 | `integrity.py` | DB integrity / maintenance controls |
 | `deepface_reports/` | Browse → DeepFace hit review package (below) |
@@ -255,7 +255,8 @@ tests/                         # Smoke suite split under tests/smoke/
 | `constants.py` | Column lists, insert SQL, merge separator |
 | `inserts.py` | Insert/import/update; identity-skip on import |
 | `queries.py` | Thin re-export of search/stats mixins |
-| `queries_search.py` | `search_records`, distinct labels |
+| `queries_search.py` | `search_records` (incl. `since_date` last-N window), distinct labels |
+| `date_window.py` | Last N days/weeks → ISO cutoff + SQL event-date clause |
 | `queries_stats.py` | Counts, distributions, iterators |
 | `csv_io.py` | CSV export helpers |
 | `backup.py` | DB file backup on close |
@@ -491,6 +492,7 @@ https://www.dac.nc.gov/contacts/public-records-request/public-records-online
 | Skip duplicate person on import | `database/inserts.py` + `identity_keys_for_record` |
 | Black+European not flagged | `searcher_race.py` (`_is_compatible`) |
 | Stated race filter (browse) | `browse/misclassify_build.py` + `queries_search.py` |
+| Last N days/weeks filter | `date_window.py` + Browse/Search UI + `search_records(since_date=…)` |
 | DeepFace default faces/recorded | `deepface/scan_build_form.py`, settings |
 | Add a new mugshot host | `mugshot_sources/registry.py` + new package like `mugshotscom/` + `geo.py` dispatch |
 | New open-data city | `config_sources.py` + field map |
