@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional
 from gui_app.shared.record_sidebar import merge_race_manual_flags
 from gui_app.tabs.browse.misclassify_constants import (
     BROWSE_ACTUAL_RACES,
+    BROWSE_DEFAULT_LIMIT,
+    BROWSE_HARD_MAX,
     bucket_actual_race,
 )
 from gui_app.tabs.browse.misclassify_suspect import (
@@ -32,9 +34,12 @@ class MisclassifyActionsMixin:
         review_q = self._browse_verification_query(self.browse_review.get())
         raw_limit = (self.browse_limit.get() or "").strip()
         try:
-            limit = max(0, int(raw_limit) if raw_limit else 0)
+            parsed = max(0, int(raw_limit) if raw_limit else BROWSE_DEFAULT_LIMIT)
         except ValueError:
-            limit = 0
+            parsed = BROWSE_DEFAULT_LIMIT
+        # 0 = "all" but never unbounded in the GUI (2M+ DOC rows OOM the process).
+        unlimited_requested = parsed == 0
+        limit = BROWSE_HARD_MAX if unlimited_requested else min(parsed, BROWSE_HARD_MAX)
         misclass_only = bool(
             getattr(self, "browse_misclass_only", None)
             and self.browse_misclass_only.get()
@@ -42,7 +47,10 @@ class MisclassifyActionsMixin:
         likely_one, likely_in = resolve_actual_filter(
             self.browse_actual_race_filter.get()
         )
-        fetch_limit = 0 if misclass_only else limit
+        # Over-fetch for misclass filter; still hard-capped for memory safety.
+        fetch_limit = (
+            min(BROWSE_HARD_MAX, max(limit * 20, 2000)) if misclass_only else limit
+        )
 
         def work():
             try:
@@ -69,14 +77,13 @@ class MisclassifyActionsMixin:
                             ethnicity_review=review_q,
                             reviewed_keys=reviewed_keys,
                         )
-                        if limit:
-                            rows = rows[:limit]
+                        rows = rows[:limit]
                 finally:
                     db.close()
                 self.after(
                     0,
-                    lambda r=rows, lim=limit, m=misclass_only: self._browse_show(
-                        r, limit=lim, misclass_only=m
+                    lambda r=rows, lim=limit, m=misclass_only, u=unlimited_requested: self._browse_show(
+                        r, limit=lim, misclass_only=m, unlimited_requested=u
                     ),
                 )
             except Exception as exc:
@@ -95,6 +102,7 @@ class MisclassifyActionsMixin:
         limit: int = 0,
         total_hint: Optional[int] = None,
         misclass_only: bool = False,
+        unlimited_requested: bool = False,
     ):
         self._browse_records = list(rows)
         self._mc_results = self._browse_records
@@ -108,8 +116,10 @@ class MisclassifyActionsMixin:
         n = len(self._browse_records)
         kind = "suspected misclassifications" if misclass_only else "arrests"
         msg = f"{n:,} {kind}"
-        if limit and n >= limit:
-            msg += f" (limit {limit:,} — set Limit to 0 for all)"
+        if unlimited_requested and limit and n >= limit:
+            msg += f" (capped at {limit:,} for memory safety)"
+        elif limit and n >= limit:
+            msg += f" (limit {limit:,})"
         self.browse_status.configure(text=msg)
         self.browse_sidebar.clear("Select a row for photo and review.")
 

@@ -146,47 +146,105 @@ class QuerySearchMixin:
         if source_system and str(source_system).lower() not in ("all", "", "*"):
             q += " AND LOWER(COALESCE(source_system, '')) = LOWER(?)"
             params.append(source_system)
-        # Review status lives in JSON flags — filter in Python.
-        # When a review filter is active, always load the full match set
-        # (then apply limit), so a small LIMIT does not hide later rows.
+        # Review status lives in JSON flags — filter in Python after a SQL prune.
+        # Never load the full multi-million-row table when the caller passed a
+        # positive limit (GUI Browse after bulk DOC imports).
         review = (ethnicity_review or "").strip().lower()
         review_active = bool(review and review not in ("all", "*", ""))
-        if review_active or not limit:
-            q += " ORDER BY arrest_date DESC, last_name ASC"
-            if offset:
-                q += " LIMIT -1 OFFSET ?"
-                params.append(offset)
-        else:
-            q += " ORDER BY arrest_date DESC, last_name ASC LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
-        rows = [dict(r) for r in self._conn.execute(q, params).fetchall()]
-        if review_active:
-            from scraper.identity_review import (
-                dedupe_records_by_person,
-                is_person_reviewed,
-                load_reviewed_identity_keys,
+        unreviewed = review in ("unreviewed", "none", "unset", "unverified")
+        if review_active and unreviewed:
+            # Cheap SQL prefilter: drop rows that already store a verdict flag.
+            # Identity-sibling reviewed people are still excluded in Python.
+            q += (
+                " AND (flags IS NULL OR TRIM(flags) = '' "
+                "OR flags NOT LIKE '%ethnicity_review%')"
             )
-            from scraper.searcher import ethnicity_review_verdict
+        elif review_active and review in ("correct", "incorrect"):
+            q += (
+                " AND flags IS NOT NULL AND TRIM(flags) != '' "
+                "AND flags LIKE '%ethnicity_review%'"
+            )
 
-            reviewed_keys = None
-            if review in ("unreviewed", "none", "unset", "unverified"):
-                reviewed_keys = load_reviewed_identity_keys(self)
+        order = " ORDER BY arrest_date DESC, last_name ASC"
+        if not review_active:
+            if limit:
+                q += order + " LIMIT ? OFFSET ?"
+                params.extend([limit, offset])
+            else:
+                q += order
+                if offset:
+                    q += " LIMIT -1 OFFSET ?"
+                    params.append(offset)
+            rows = [dict(r) for r in self._conn.execute(q, params).fetchall()]
+            if limit and len(rows) > limit:
+                rows = rows[:limit]
+            return rows
 
-            filtered = []
-            for rec in rows:
-                verdict = ethnicity_review_verdict(rec)
-                if review in ("unreviewed", "none", "unset", "unverified"):
+        return self._search_records_review_filter(
+            q,
+            params,
+            order=order,
+            review=review,
+            unreviewed=unreviewed,
+            limit=limit,
+            offset=offset,
+        )
+
+    def _search_records_review_filter(
+        self,
+        q: str,
+        params: List[Any],
+        *,
+        order: str,
+        review: str,
+        unreviewed: bool,
+        limit: int,
+        offset: int,
+    ) -> List[Dict[str, Any]]:
+        """Page through SQL matches, apply verdict/identity filters, honor limit."""
+        from scraper.identity_review import (
+            dedupe_records_by_person,
+            is_person_reviewed,
+            load_reviewed_identity_keys,
+        )
+        from scraper.searcher import ethnicity_review_verdict
+
+        reviewed_keys = load_reviewed_identity_keys(self) if unreviewed else None
+        want = max(0, int(limit)) if limit else 0
+        # When unlimited, stream in chunks so we never hold 2M+ raw rows at once.
+        page_size = min(max(want * 8, 2000), 10_000) if want else 5000
+        # Safety: stop paging after this many SQL rows (unlimited export path).
+        max_scan = want * 200 if want else 2_000_000
+        max_scan = max(max_scan, page_size)
+
+        filtered: List[Dict[str, Any]] = []
+        scanned = 0
+        while scanned < max_scan:
+            page_sql = q + order + " LIMIT ? OFFSET ?"
+            page_params = list(params) + [page_size, scanned]
+            page = [dict(r) for r in self._conn.execute(page_sql, page_params).fetchall()]
+            if not page:
+                break
+            scanned += len(page)
+            for rec in page:
+                if unreviewed:
                     if is_person_reviewed(rec, reviewed_keys):
                         continue
                     filtered.append(rec)
-                elif verdict == review:
-                    filtered.append(rec)
-            # One row per person so classification queues are not repetitive.
-            if review in ("unreviewed", "none", "unset", "unverified"):
+                else:
+                    if ethnicity_review_verdict(rec) == review:
+                        filtered.append(rec)
+            if unreviewed:
                 filtered = dedupe_records_by_person(filtered, prefer_confidence=False)
-            if limit and len(filtered) > limit:
-                filtered = filtered[:limit]
-            rows = filtered
-        elif limit and len(rows) > limit:
-            rows = rows[:limit]
-        return rows
+            # Enough rows to satisfy offset+limit (or filled unlimited batch goal).
+            need = (offset + want) if want else 0
+            if want and len(filtered) >= need:
+                break
+            if len(page) < page_size:
+                break
+
+        if offset:
+            filtered = filtered[offset:]
+        if want and len(filtered) > want:
+            filtered = filtered[:want]
+        return filtered

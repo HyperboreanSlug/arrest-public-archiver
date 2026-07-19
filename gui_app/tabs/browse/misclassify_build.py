@@ -9,6 +9,7 @@ from gui_app.shared.record_sidebar import RecordSidebar
 from gui_app.tabs.browse.misclassify_constants import (
     BROWSE_ACTUAL_RACES,
     BROWSE_COLS,
+    BROWSE_DEFAULT_LIMIT,
     BROWSE_LABELS,
     VERIFICATION_FILTERS,
     bucket_actual_race,
@@ -54,12 +55,15 @@ class MisclassifyBuildMixin:
             width=170,
             command=self._browse_filter_changed,
         )
-        # 0 / blank = no cap (load full filtered list)
-        self.browse_limit = ctk.CTkEntry(controls, width=90, placeholder_text="0 = all")
+        # Default cap keeps multi-million DOC DBs from OOM on auto-refresh.
+        # 0 = "all" but GUI clamps to BROWSE_HARD_MAX in the refresh path.
+        self.browse_limit = ctk.CTkEntry(
+            controls, width=90, placeholder_text=str(BROWSE_DEFAULT_LIMIT)
+        )
         self.browse_stated_race.set("All")
         self.browse_actual_race_filter.set("All")
         self.browse_review.set("Unverified")
-        self.browse_limit.insert(0, "0")
+        self.browse_limit.insert(0, str(BROWSE_DEFAULT_LIMIT))
         self.browse_misclass_only = ctk.CTkCheckBox(
             controls,
             text="Suspected misclassifications only",
@@ -71,7 +75,7 @@ class MisclassifyBuildMixin:
             ("Stated race", self.browse_stated_race),
             ("Actual race", self.browse_actual_race_filter),
             ("Confirmation", self.browse_review),
-            ("Limit (0=all)", self.browse_limit),
+            ("Limit", self.browse_limit),
         ):
             ctk.CTkLabel(controls, text=label, font=FONT_SM, text_color=C["muted"]).pack(
                 side="left", padx=(10, 3), pady=10

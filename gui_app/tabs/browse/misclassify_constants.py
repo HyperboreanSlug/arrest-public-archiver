@@ -25,6 +25,11 @@ BROWSE_LABELS = {
     "date": "Date",
     "source": "Source",
 }
+# Default row cap for Browse refresh. limit=0 still means "all" but the GUI
+# clamps to BROWSE_HARD_MAX so multi-million DOC imports cannot OOM the process.
+BROWSE_DEFAULT_LIMIT = 500
+BROWSE_HARD_MAX = 10_000
+
 # Confirmation status filter (default Unverified — confirmed never reappear).
 VERIFICATION_FILTERS = [
     "Unverified",
