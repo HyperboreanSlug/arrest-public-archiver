@@ -33,13 +33,14 @@ class RecentlyBookedClient:
 
     def _wait_for_rate_limit(self) -> None:
         with self._pace_lock:
+            now = time.monotonic()
             last = self._last_request_at
             delay = self.delay
-        if last is None:
-            return
-        remaining = delay - (time.monotonic() - last)
-        if remaining > 0:
-            time.sleep(remaining)
+            if last is not None:
+                remaining = delay - (now - last)
+                if remaining > 0:
+                    time.sleep(remaining)
+            self._last_request_at = time.monotonic()
 
     def get(self, url: str) -> str:
         """Fetch *url* and return decoded response text, retrying transient failures."""
@@ -56,8 +57,6 @@ class RecentlyBookedClient:
             self._wait_for_rate_limit()
             try:
                 response = self.session.get(url, timeout=REQUEST_TIMEOUT)
-                with self._pace_lock:
-                    self._last_request_at = time.monotonic()
                 response.raise_for_status()
                 # Prefer UTF-8 when the body starts with a UTF-8 BOM or XML decl.
                 raw = response.content[:4]

@@ -1,6 +1,7 @@
 """Discover county work units and scrape a single geo scope on one host."""
 from __future__ import annotations
 
+import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 from .types import CancelCheck, ProgressCallback, RecordCallback
@@ -79,9 +80,11 @@ class GeoScrapeMixin:
     ) -> int:
         known = self.identity.snapshot_urls()
         count = [0]
+        _count_lock = threading.Lock()
 
         def cb(rec: Dict[str, Any], n: int) -> None:
-            count[0] += 1
+            with _count_lock:
+                count[0] += 1
             if record_cb:
                 record_cb(rec, n)
 

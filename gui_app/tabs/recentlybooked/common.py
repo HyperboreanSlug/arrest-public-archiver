@@ -21,9 +21,14 @@ from .constants import _RB_COLS, _RB_WIDTHS
 
 
 class RbCommonMixin:
+    def _rb_get_eth(self):
+        if not hasattr(self, "_rb_eth_cache") or self._rb_eth_cache is None:
+            self._rb_eth_cache = ArrestSearcher(self.db_path).ethnic_db
+        return self._rb_eth_cache
+
     def _rb_hint(self, record: Dict[str, Any], eth=None) -> str:
         if eth is None:
-            eth = ArrestSearcher(self.db_path).ethnic_db
+            eth = self._rb_get_eth()
         n = self._rb_name(record)
         last = (record.get("last_name") or "").strip()
         if not last and n:

@@ -8,7 +8,7 @@ from typing import Optional, Tuple
 
 import requests
 
-from ..config import DEFAULT_DELAY, MAX_RETRIES, REQUEST_TIMEOUT, USER_AGENT
+from ..config import DEFAULT_DELAY, MAX_RETRIES, REQUEST_TIMEOUT
 
 _TIMEOUT: Tuple[float, float] = (12.0, float(max(45, int(REQUEST_TIMEOUT))))
 _UA = (
@@ -33,8 +33,6 @@ class MugshotsComClient:
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.9",
                 "Accept-Encoding": "gzip, deflate",
-                "Connection": "close",
-                "X-Research-Client": USER_AGENT[:80],
             }
         )
         self._last_request_at: Optional[float] = None
@@ -42,13 +40,14 @@ class MugshotsComClient:
 
     def _wait(self) -> None:
         with self._pace_lock:
+            now = time.monotonic()
             last = self._last_request_at
             delay = self.delay
-        if last is None:
-            return
-        remaining = delay - (time.monotonic() - last)
-        if remaining > 0:
-            time.sleep(remaining)
+            if last is not None:
+                remaining = delay - (now - last)
+                if remaining > 0:
+                    time.sleep(remaining)
+            self._last_request_at = time.monotonic()
 
     def get(self, url: str, *, referer: Optional[str] = None) -> str:
         return self._request(url, referer=referer).text
@@ -66,8 +65,6 @@ class MugshotsComClient:
                 response = self.session.get(
                     url, timeout=_TIMEOUT, headers=headers, allow_redirects=True
                 )
-                with self._pace_lock:
-                    self._last_request_at = time.monotonic()
                 if response.status_code in (408, 429, 500, 502, 503, 504):
                     last_error = requests.HTTPError(
                         f"{response.status_code} for {url}", response=response

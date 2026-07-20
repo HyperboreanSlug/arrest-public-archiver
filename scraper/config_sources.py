@@ -167,4 +167,34 @@ SOURCES: List[ArrestSource] = [
         has_names=False,
         status="verified_bulk",
     ),
+    ArrestSource(
+        id="nyc_arrests",
+        name="NYPD Arrests (Historic)",
+        state="NY",
+        jurisdiction="New York City",
+        scrape_method="socrata",
+        socrata_domain="data.cityofnewyork.us",
+        socrata_dataset_id="8h9b-rp9u",
+        portal_url="https://data.cityofnewyork.us/Public-Safety/NYPD-Arrests-Data--Historic-/8h9b-rp9u",
+        field_map={
+            "arrest_key": "source_id",
+            "arrest_date": "arrest_date",
+            "pd_desc": "charge_description",
+            "ofns_desc": "charge_group",
+            "law_cat_cd": "charge_level",
+            "arrest_boro": "agency",
+            "arrest_precinct": "city",
+            "age_group": "age",
+            "perp_sex": "sex",
+            "perp_race": "race",
+        },
+        default_row_limit=5000,
+        notes=(
+            "6M+ records 2006-2025. No names (anonymized arrest_key). "
+            "Race field: WHITE, BLACK, WHITE HISPANIC, BLACK HISPANIC, "
+            "ASIAN/PACIFIC ISLANDER, AMERICAN INDIAN/ALASKAN NATIVE."
+        ),
+        has_names=False,
+        status="verified_bulk",
+    ),
 ]

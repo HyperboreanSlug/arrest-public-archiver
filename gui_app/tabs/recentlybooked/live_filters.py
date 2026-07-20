@@ -43,21 +43,20 @@ class RbLiveFiltersMixin:
         self._rb_rebuild_live_tree()
         self._rb_live_update_filter_status()
 
-    def _rb_live_row_matches_sources(self, rec: Dict[str, Any]) -> bool:
-        selected = set(self._rb_live_selected_sources())
+    def _rb_live_row_matches_sources(self, rec: Dict[str, Any], selected: set) -> bool:
         if not selected:
             return False
         src = str(rec.get("source_system") or "").strip().lower()
         if not src:
-            # Older RB rows may lack source_system; treat as recentlybooked.
             src = "recentlybooked"
         return src in selected
 
     def _rb_rebuild_live_tree(self, *, select_url: Optional[str] = None) -> None:
         eth = getattr(self, "_rb_live_eth", None)
         hide_race, hide_photo = self._rb_live_filter_flags()
+        selected = set(self._rb_live_selected_sources())
         source_filtered = [
-            r for r in (self._rb_live_all or []) if self._rb_live_row_matches_sources(r)
+            r for r in (self._rb_live_all or []) if self._rb_live_row_matches_sources(r, selected)
         ]
         shown = self._rb_filter_rows(
             source_filtered,

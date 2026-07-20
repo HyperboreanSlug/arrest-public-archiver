@@ -19,6 +19,14 @@ from .client import MugshotsComClient
 _guard = threading.Lock()
 _url_local: dict[str, Path] = {}
 _url_skip: set[str] = set()
+_MAX_CACHE = 50_000
+
+
+def reset_photo_cache() -> None:
+    """Clear in-memory photo URL caches (call between scrape sessions)."""
+    with _guard:
+        _url_local.clear()
+        _url_skip.clear()
 
 
 def _safe_id(record: Mapping[str, Any]) -> str:
@@ -57,6 +65,8 @@ def download_photo(
     destination = Path(output_root) / state / county / f"{_safe_id(record)}{ext}"
     if destination.is_file() and not is_placeholder_photo(destination):
         with _guard:
+            if len(_url_local) >= _MAX_CACHE:
+                _url_local.clear()
             _url_local[photo_url] = destination
         return destination
 
@@ -82,6 +92,8 @@ def download_photo(
                 _url_skip.add(photo_url)
             return None
         with _guard:
+            if len(_url_local) >= _MAX_CACHE:
+                _url_local.clear()
             _url_local[photo_url] = destination
         return destination
     finally:

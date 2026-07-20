@@ -5,8 +5,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 USER_AGENT = (
-    "ArrestPublicArchiver/0.1 (+https://github.com/HyperboreanSlug/arrest-public-archiver; "
-    "public open-data research; polite rate limits)"
+    "ArrestPublicArchiver/0.1 (public open-data research; polite rate limits)"
 )
 DEFAULT_DELAY = 1.0
 MAX_RETRIES = 3

@@ -62,7 +62,7 @@ class RbLiveRefreshMixin:
                 self.log_live(f"Live feed failed: {e}")
                 self.after(
                     0,
-                    lambda: self.rb_live_status.configure(text=f"Failed: {e}"),
+                    lambda e=e: self.rb_live_status.configure(text=f"Failed: {e}"),
                 )
             finally:
                 self.after(0, lambda: setattr(self, "_rb_live_busy", False))

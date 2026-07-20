@@ -49,7 +49,8 @@ class MultiSourceOrchestrator(
 
         def wrapped(rec: Dict[str, Any], _n: int) -> None:
             if skip_identity and not self.identity.claim_record(rec):
-                skipped[0] += 1
+                with self._count_lock:
+                    skipped[0] += 1
                 return
             with self._count_lock:
                 self._total += 1

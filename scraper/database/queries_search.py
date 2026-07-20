@@ -251,15 +251,14 @@ class QuerySearchMixin:
                 else:
                     if ethnicity_review_verdict(rec) == review:
                         filtered.append(rec)
-            if unreviewed:
-                filtered = dedupe_records_by_person(filtered, prefer_confidence=False)
-            # Enough rows to satisfy offset+limit (or filled unlimited batch goal).
             need = (offset + want) if want else 0
             if want and len(filtered) >= need:
                 break
             if len(page) < page_size:
                 break
 
+        if unreviewed:
+            filtered = dedupe_records_by_person(filtered, prefer_confidence=False)
         if offset:
             filtered = filtered[offset:]
         if want and len(filtered) > want:

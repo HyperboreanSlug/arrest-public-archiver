@@ -21,6 +21,16 @@ _path_locks: Dict[str, threading.Lock] = {}
 _url_locks: Dict[str, threading.Lock] = {}
 _url_local: Dict[str, Path] = {}
 _url_skip: Set[str] = set()
+_MAX_CACHE = 50_000
+
+
+def reset_photo_cache() -> None:
+    """Clear in-memory photo URL caches (call between scrape sessions)."""
+    with _guard:
+        _path_locks.clear()
+        _url_locks.clear()
+        _url_local.clear()
+        _url_skip.clear()
 
 
 def _lock_for(table: Dict[str, threading.Lock], key: str) -> threading.Lock:
@@ -40,6 +50,8 @@ def _mark_skip(photo_url: str) -> None:
 
 def _remember(photo_url: str, path: Path) -> None:
     with _guard:
+        if len(_url_local) >= _MAX_CACHE:
+            _url_local.clear()
         _url_local[photo_url] = path
         _url_skip.discard(photo_url)
 

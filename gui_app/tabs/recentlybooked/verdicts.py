@@ -62,7 +62,7 @@ class RbVerdictsMixin:
         related = self._rb_related_indexes(record, records)
         if not related:
             for i, existing in enumerate(records):
-                same_id = record.get("id") and existing.get("id") == record.get("id")
+                same_id = record.get("id") is not None and existing.get("id") == record.get("id")
                 same_url = (
                     record.get("source_url")
                     and existing.get("source_url") == record.get("source_url")

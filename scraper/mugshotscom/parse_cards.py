@@ -104,5 +104,5 @@ def parse_live_feed(html: str) -> List[Dict[str, Any]]:
             rec["source_id"] = m_news.group(2)
             if img and img.get("src") and "mugshot" in str(img.get("src")).lower():
                 rec["photo_url"] = urljoin(BASE_URL, str(img.get("src")))
-                news_cards.append(rec)
+            news_cards.append(rec)
     return county_cards + news_cards

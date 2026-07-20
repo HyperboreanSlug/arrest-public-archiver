@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Any, Dict, List
 
 from scraper.database.constants import _ARREST_COLUMNS, _MERGE_SEP, _MERGE_UNION_FIELDS
@@ -43,15 +42,14 @@ class DedupeMergeFieldsMixin:
         parts: List[str] = []
         seen: set = set()
         for chunk in raw.split(_MERGE_SEP):
-            for piece in re.split(r"[;\n]+", chunk):
-                p = " ".join(piece.strip().split())
-                if not p:
-                    continue
-                key = p.casefold()
-                if key in seen:
-                    continue
-                seen.add(key)
-                parts.append(p)
+            p = " ".join(chunk.strip().split())
+            if not p:
+                continue
+            key = p.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            parts.append(p)
         return parts
 
     @classmethod
