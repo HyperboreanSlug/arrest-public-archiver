@@ -16,6 +16,23 @@ class ExportParityTests(unittest.TestCase):
             "JOHN DOE",
         )
 
+    def test_arrest_date_no_time_and_a_number_prefix(self):
+        from gui_app.shared.export_card_fields import arrest_date_label
+        from gui_app.shared.export_card_release import format_release_label
+
+        self.assertEqual(
+            arrest_date_label(
+                {"arrest_date": "2026-07-06", "arrest_time": "14:30:00"}
+            ),
+            "2026-07-06",
+        )
+        self.assertEqual(
+            arrest_date_label({"arrest_date": "2026-07-06T14:30:00"}),
+            "2026-07-06",
+        )
+        self.assertEqual(format_release_label(12), "A#12")
+        self.assertEqual(format_release_label(None), "")
+
     def test_charge_separators_middle_dot(self):
         from gui_app.shared.export_card_polish import (
             card_charge_text,

@@ -149,19 +149,18 @@ def crime(record: Mapping[str, Any], *, max_labels: int = 6) -> str:
 
 
 def arrest_date_label(record: Mapping[str, Any]) -> str:
-    """Arrest/booking date for footer left (with location)."""
+    """Arrest/booking date for footer left (date only, no time)."""
     date = str(record.get("arrest_date") or record.get("booking_date") or "").strip()
-    time = str(record.get("arrest_time") or "").strip()
     if not date:
         return ""
     if "T" in date:
-        d, _, t = date.partition("T")
-        date = d
-        if not time and t:
-            time = t[:5]
-    if time:
-        return f"{date} {time}".strip()
-    return date
+        date = date.partition("T")[0]
+    # Strip trailing clock if glued as "YYYY-MM-DD HH:MM" / "YYYY-MM-DD HH:MM:SS"
+    if " " in date:
+        head = date.split(" ", 1)[0]
+        if len(head) >= 8 and any(c.isdigit() for c in head):
+            date = head
+    return date.strip()
 
 
 def arrest_datetime(record: Mapping[str, Any], *, assign: bool = False) -> str:

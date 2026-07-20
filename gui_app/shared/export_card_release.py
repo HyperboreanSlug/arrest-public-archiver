@@ -146,11 +146,11 @@ def format_export_badge(num: Optional[int]) -> str:
 
 
 def format_release_label(num: Optional[int]) -> str:
-    """Footer text for a release number on the card image."""
+    """Footer text for a release number on the card image (e.g. ``A#12``)."""
     n = _coerce_export_num(num)
     if n is None:
         return ""
-    return f"No. {n}"
+    return f"A#{n}"
 
 
 def _persist_to_db(record: Mapping[str, Any], num: int) -> None:
