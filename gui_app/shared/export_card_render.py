@@ -35,12 +35,13 @@ from scraper.searcher import format_race_label
 # Layout scale (matches premium HTML card proportions on 1080×1350).
 _PAD = 48
 _NAME_SIZE = 52
-_CRIME_H_MIN = 72
-_CRIME_H_MAX = 280
+# Original crime box was 128px @ 42pt; grow when needed, shrink type only as last resort.
+_CRIME_H_MIN = 128
+_CRIME_H_MAX = 300
 _BANNER_H = 96
 _FOOTER_H = 68
 _NUMBER_SIZE = 52  # bottom-right export No. — large (SORPA parity)
-_PHOTO_H_MIN = 360
+_PHOTO_H_MIN = 420
 
 
 def render_export_card(
@@ -86,14 +87,15 @@ def render_export_card(
         _CRIME_H_MIN,
         min(_CRIME_H_MAX, _CARD_H - _PAD - _PHOTO_H_MIN - fixed_below),
     )
-    # Prefer full text: shrink type first, then grow panel (photo shrinks).
+    # Prefer original 42pt: grow panel first; shrink type only if needed.
     crime_font, crime_line_h, crime_lines, crime_h = plan_crime_panel(
         draw,
         cr,
         max_width=max_text_w - 36,
         max_height=crime_budget,
+        min_panel_h=_CRIME_H_MIN,
     )
-    crime_h = max(_CRIME_H_MIN, min(crime_budget, max(crime_h, _CRIME_H_MIN)))
+    crime_h = max(_CRIME_H_MIN, min(crime_budget, crime_h))
 
     stack_h = fixed_below + crime_h
     photo_top = _PAD
@@ -242,7 +244,9 @@ def _draw_crime_panel(
 ) -> int:
     box = (margin, y, _CARD_W - margin, y + panel_h)
     draw.rounded_rectangle(box, radius=18, fill=_CRIME_PANEL, outline=_LINE, width=2)
-    ty = y + 14
+    # Vertically center the text block in the panel (original 128px feel).
+    body_h = max(line_h, len(lines or ["—"]) * line_h)
+    ty = y + max(14, (panel_h - body_h) // 2)
     for line in lines or ["—"]:
         draw.text((margin + 18, ty), line, font=font, fill=_TEXT)
         ty += line_h
