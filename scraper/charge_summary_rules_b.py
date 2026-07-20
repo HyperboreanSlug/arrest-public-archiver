@@ -40,6 +40,11 @@ _SUMMARY_RULES_B: List[Tuple[str, List[str]]] = [
     ('DRUG PARAPHERNALIA', [
         '\\bparaphernalia\\b', '\\bparaphernilia\\b', '\\buse/possession\\s+drug\\s+paraphernalia',
         '\\bupodp\\b', '\\b13a-12-260\\b',
+        # Jail shorthand: Drug EQUIP-POSSESS / drug equipment possession
+        '\\bdrug\\s+equip(?:ment)?\\s*[-–—/]?\\s*possess',
+        '\\bequip(?:ment)?\\s*[-–—/]?\\s*possess\\b.*\\bdrug',
+        '\\bposs(?:ess(?:ion)?)?\\s+(?:of\\s+)?drug\\s+equip',
+        '\\bdrug\\s+equip(?:ment)?\\b',
     ]),
     ('POSSESSION OF CONTROLLED SUBSTANCE', [
         '\\bcontroll?ed\\s+substance', '\\bpossession\\s+of\\s+controlled', '\\bunlawful\\s+possession\\s+controlled',

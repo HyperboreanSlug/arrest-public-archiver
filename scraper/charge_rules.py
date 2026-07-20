@@ -126,6 +126,7 @@ _RULES: List[Tuple[str, List[str]]] = [
             r"\bpossess.*cds\b", r"\bcds\b", r"\bdelivery\s+of\b",
             r"\btraffick.*drug", r"\bdrug\s+traffick", r"\bintent\s+to\s+(distrib|deliver|sell)",
             r"\bparaphernalia\b", r"\bpwid\b",
+            r"\bdrug\s+equip(?:ment)?", r"\bequip(?:ment)?\s*[-–—/]?\s*possess",
             # Jail shorthand: Man.Delv.Poss Cont Subs
             r"\bman\.?\s*delv", r"\bman(?:ufacture)?\s*/?\s*del(?:iv(?:ery)?)?",
             r"\bposs\.?\s+cont\.?\s+sub", r"\bcont\.?\s+subs?\b",

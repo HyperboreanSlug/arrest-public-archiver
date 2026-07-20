@@ -52,6 +52,8 @@ EXPAND_PHRASES: List[Tuple[str, str]] = [
     (r"\bPOSS\s+OF\s+MARIJUANA\b", "Possession of Marijuana"),
     (r"\bDRUG\s+PARAPHERNALIA\s*[-–—]?\s*BUY\s*/\s*POSSESS\b", "Possession of Drug Paraphernalia"),
     (r"\bUSE\s*/\s*POSSESSION\s+DRUG\s+PARAPHERNALIA\b", "Possession of Drug Paraphernalia"),
+    (r"\bDRUG\s+EQUIP(?:MENT)?\s*[-–—/]?\s*POSSESS(?:ION)?\b", "Possession of Drug Equipment"),
+    (r"\bPOSS(?:ESS(?:ION)?)?\s+(?:OF\s+)?DRUG\s+EQUIP(?:MENT)?\b", "Possession of Drug Equipment"),
     (r"\bFAILURE\s+TO\s+APPEAR\s*/\s*COMPLY\s*/\s*PAY\b", "Failure to Appear, Comply, or Pay"),
     (r"\bANNOY\s*/\s*MOLEST\b", "Annoy or Molest"),
     (r"\bSEND\s*/\s*SELL\s*/\s*DISTRIBUTE\b", "Send, Sell, or Distribute"),
