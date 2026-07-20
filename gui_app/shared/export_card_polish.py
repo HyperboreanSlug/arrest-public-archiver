@@ -99,6 +99,10 @@ _DEGREE_DEG = re.compile(
 )
 _BARE_DEG = re.compile(r"(?i)\b(\d+(?:st|nd|rd|th))\s+Deg\b")
 _WITH_SLASH = re.compile(r"(?i)\bw\s*/\s*")
+# Jail age shorthand: YOA / years of age → yo (12-16 yoa → 12-16 yo)
+_YOA_GLUED = re.compile(r"(?i)(\d)\s*yoa\b")
+_YOA_WORD = re.compile(r"(?i)\byoa\b")
+_YEARS_OF_AGE = re.compile(r"(?i)\byears?\s+of\s+age\b")
 # Furnishing alcohol to under-21 → short plain label.
 _ALCOHOL_UNDERAGE = re.compile(
     r"(?i)\b(?:"
@@ -115,7 +119,21 @@ _ALCOHOL_UNDERAGE = re.compile(
     r"(?:\s*\([^)]*\))?"
 )
 _SMALL_WORDS = frozenset(
-    {"a", "an", "and", "of", "or", "the", "to", "for", "in", "on", "by", "with"}
+    {
+        "a",
+        "an",
+        "and",
+        "of",
+        "or",
+        "the",
+        "to",
+        "for",
+        "in",
+        "on",
+        "by",
+        "with",
+        "yo",  # years old (from yoa) — keep lowercase on cards
+    }
 )
 _AFFIX = re.compile(r"^([(\"'\[]*)(.*?)([.,;:\"'\)\]]*)$")
 # Age ranges must keep hyphen (not become charge separators).
@@ -153,6 +171,11 @@ def _rewrite_card_phrases(s: str) -> str:
     """Map long boilerplate offense strings to short card labels."""
     if _ALCOHOL_UNDERAGE.search(s):
         s = _ALCOHOL_UNDERAGE.sub("Giving Underage Alcohol", s)
+    # 12YOA / 12 yoa / years of age → yo
+    s = _YOA_GLUED.sub(r"\1 yo", s)
+    s = _YOA_WORD.sub("yo", s)
+    s = _YEARS_OF_AGE.sub("yo", s)
+    s = re.sub(r"\s+", " ", s).strip()
     return s
 
 

@@ -16,6 +16,20 @@ class ExportParityTests(unittest.TestCase):
             "JOHN DOE",
         )
 
+    def test_yoa_becomes_yo_on_card(self):
+        from gui_app.shared.export_card_fields import crime
+
+        out = crime(
+            {
+                "charge_description": (
+                    "Lewd Lasc Battery Victim 12-16 YOA - Rape; "
+                    "Sex Battery Victim <12 Offender >18 - Rape"
+                )
+            }
+        )
+        self.assertRegex(out, r"(?i)12-16\s+yo\b")
+        self.assertNotRegex(out, r"(?i)\byoa\b")
+
     def test_arrest_date_no_time_and_a_number_prefix(self):
         from gui_app.shared.export_card_fields import arrest_date_label
         from gui_app.shared.export_card_release import format_release_label
