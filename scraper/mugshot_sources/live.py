@@ -64,7 +64,7 @@ class LiveScrapeMixin:
         record_cb: Optional[RecordCallback],
         progress_cb: Optional[ProgressCallback],
     ) -> int:
-        known = self.identity.snapshot_urls()
+        known = {u.casefold() for u in self.identity.snapshot_urls()}
         count = [0]
 
         def cb(rec: Dict[str, Any], n: int) -> None:

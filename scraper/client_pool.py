@@ -23,8 +23,17 @@ class ClientPool(Generic[T]):
             self._all.append(client)
             self._q.put(client)
 
+    _DEFAULT_BORROW_TIMEOUT = 300.0
+
     def borrow(self, timeout: Optional[float] = None) -> T:
-        return self._q.get(timeout=timeout)
+        t = timeout if timeout is not None else self._DEFAULT_BORROW_TIMEOUT
+        try:
+            return self._q.get(timeout=t)
+        except queue.Empty:
+            raise RuntimeError(
+                f"ClientPool.borrow: no client available within {t}s "
+                "(a worker may have crashed without releasing)"
+            )
 
     def release(self, client: T) -> None:
         self._q.put(client)

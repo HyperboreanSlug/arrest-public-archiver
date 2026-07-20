@@ -164,17 +164,17 @@ class InsertMixin:
             "SELECT id, charge_description, charge_group, charge_level, "
             "charge_class, statute FROM arrests"
         ).fetchall()
-        n = 0
+        updates = []
         for row in rows:
             d = dict(row)
             cat = classify_charge(d)
-            self._conn.execute(
-                "UPDATE arrests SET charge_category = ? WHERE id = ?",
-                (cat, d["id"]),
+            updates.append((cat, d["id"]))
+        if updates:
+            self._conn.executemany(
+                "UPDATE arrests SET charge_category = ? WHERE id = ?", updates
             )
-            n += 1
         self._conn.commit()
-        return n
+        return len(updates)
 
     def update_arrest(self, row_id: int, fields: Dict[str, Any]) -> bool:
         if not fields:

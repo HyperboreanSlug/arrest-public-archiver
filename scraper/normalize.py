@@ -55,11 +55,13 @@ def apply_field_map(row: Dict[str, Any], field_map: Dict[str, str]) -> Dict[str,
         if val is not None:
             out[dest] = val
 
-    # Generic Title Case → snake
+    # Generic Title Case → snake (remove original to avoid bloat)
     for k in list(out.keys()):
         if " " in k or k[:1].isupper():
             snake = k.lower().replace(" ", "_").replace("-", "_")
-            out.setdefault(snake, out[k])
+            if snake != k:
+                out.setdefault(snake, out[k])
+                del out[k]
 
     # Gender alias
     if not out.get("sex") and out.get("gender"):

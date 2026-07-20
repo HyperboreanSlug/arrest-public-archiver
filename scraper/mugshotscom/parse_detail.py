@@ -106,17 +106,18 @@ def parse_detail(html: str, source_url: str) -> Dict[str, Any]:
         "source_url": source_url.rstrip("/") if not source_url.endswith(".html") else source_url,
         "source_system": "mugshotscom",
     }
-    m = _DETAIL_PATH.match(path) or _LIVE_DETAIL.match(path)
-    if m and _DETAIL_PATH.match(path):
-        state_slug = m.group(1)
-        county_part = m.group(2)
-        source_id = m.group(4)
+    m_detail = _DETAIL_PATH.match(path)
+    m_live = _LIVE_DETAIL.match(path)
+    if m_detail:
+        state_slug = m_detail.group(1)
+        county_part = m_detail.group(2)
+        source_id = m_detail.group(4)
         record["state"] = state_code_from_slug(state_slug)
         record["county"] = normalize_county_slug(county_part)
         record["jurisdiction"] = record["county"].replace("-", " ").title()
         record["source_id"] = source_id
-    elif m and _LIVE_DETAIL.match(path):
-        record["source_id"] = m.group(2)
+    elif m_live:
+        record["source_id"] = m_live.group(2)
 
     for field in soup.select(".field"):
         name = (_text(field.select_one(".name")) or "").strip().lower().rstrip(":")

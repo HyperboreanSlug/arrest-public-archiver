@@ -29,11 +29,13 @@ class CsvIoMixin:
             if filters.get("source_system"):
                 q += " AND LOWER(COALESCE(source_system,'')) = LOWER(?)"
                 params.append(filters["source_system"])
-        rows = self._conn.execute(q, params).fetchall()
+        rows = self._conn.execute(q, params)
         fieldnames = ["id", *_ARREST_COLUMNS, "scraped_at"]
+        count = 0
         with open(output_path, "w", newline="", encoding="utf-8") as f:
             w = csv_module.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
             w.writeheader()
             for row in rows:
                 w.writerow(dict(row))
-        return len(rows)
+                count += 1
+        return count

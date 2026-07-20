@@ -189,7 +189,7 @@ class DedupeIdentityMixin:
             score += 200
         score += cls._row_richness(row)
         rid = int(row.get("id") or 0)
-        return (score, -rid, rid)
+        return (score, -rid)
 
     @classmethod
     def pick_name_dob_photo_keeper(

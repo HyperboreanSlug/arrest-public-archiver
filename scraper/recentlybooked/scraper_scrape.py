@@ -233,7 +233,7 @@ class RecentlyBookedScrapeMixin:
             self.scrape_county(
                 state, county, max_pages=max_pages, skip_existing_urls=known_urls,
                 with_photos=with_photos, with_html=with_html,
-                cancel_check=cancel_check, progress_cb=progress_cb,
+                cancel_check=cancel_check, progress_cb=None,
                 record_cb=_forward, workers=1,
             )
         return records

@@ -68,7 +68,9 @@ def save_settings(settings: Dict[str, Any], path: Optional[Path] = None) -> Path
     p.parent.mkdir(parents=True, exist_ok=True)
     clean = normalize_settings({**DEFAULTS, **(settings or {})})
     out = {k: clean[k] for k in DEFAULTS}
-    p.write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    tmp.write_text(json.dumps(out, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    tmp.replace(p)
     return p
 
 

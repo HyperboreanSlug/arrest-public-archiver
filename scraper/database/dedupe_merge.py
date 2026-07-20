@@ -44,11 +44,13 @@ class DedupeMergeMixin(DedupeMergeFieldsMixin):
             ids = [int(x) for x in str(r["id_list"] or "").split(",") if x.strip().isdigit()]
             if len(ids) < 2:
                 continue
-            members = []
-            for rid in ids:
-                rec = self.get_arrest_by_id(rid)
-                if rec:
-                    members.append(rec)
+            ph = ",".join("?" for _ in ids)
+            members = [
+                dict(row)
+                for row in self._conn.execute(
+                    f"SELECT * FROM arrests WHERE id IN ({ph})", ids
+                ).fetchall()
+            ]
             if len(members) < 2:
                 continue
             members.sort(
@@ -81,12 +83,12 @@ class DedupeMergeMixin(DedupeMergeFieldsMixin):
         for g in groups:
             keep_id = int(g["keep_id"])
             remove_ids = list(g["remove_ids"])
-            keep_row = self.get_arrest_by_id(keep_id)
+            members_by_id = {int(m["id"]): m for m in g["members"]}
+            keep_row = members_by_id.get(keep_id)
             if not keep_row or not remove_ids:
                 continue
             kept += 1
-            losers = [self.get_arrest_by_id(i) for i in remove_ids]
-            losers = [x for x in losers if x]
+            losers = [members_by_id[i] for i in remove_ids if i in members_by_id]
             if merge_fields and losers:
                 updates = self.merge_duplicate_members(keep_row, losers)
                 if updates and not dry_run:

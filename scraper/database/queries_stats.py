@@ -118,8 +118,12 @@ class QueryStatsMixin:
         else:
             sql = f"SELECT * FROM arrests {where} ORDER BY id {order} LIMIT ? OFFSET ?"
             params = tuple(params_list) + (int(limit), offset)
-        for row in self._conn.execute(sql, params):
-            yield dict(row)
+        cur = self._conn.execute(sql, params)
+        try:
+            for row in cur:
+                yield dict(row)
+        finally:
+            cur.close()
 
     # SOR DeepFace scanner alias
     def iter_offenders(self, **kwargs):

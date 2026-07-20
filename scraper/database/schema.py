@@ -118,6 +118,8 @@ class SchemaMixin:
             ("idx_arrests_source_url", "source_url"),
             ("idx_arrests_source_system", "source_system"),
             ("idx_arrests_arrest_date", "arrest_date"),
+            ("idx_arrests_booking_date", "booking_date"),
+            ("idx_arrests_source_id", "source_id"),
             ("idx_arrests_charge", "charge_description"),
             ("idx_arrests_charge_category", "charge_category"),
             ("idx_arrests_photo", "photo_path"),

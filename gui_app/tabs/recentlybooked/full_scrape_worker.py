@@ -13,6 +13,10 @@ from .full_scrape_ui import _full_import_row
 
 
 class RbFullScrapeWorkerMixin:
+    def _rb_full_scrape_done(self) -> None:
+        self._rb_full_busy = False
+        self.is_running = False
+
     def _rb_full_scrape_worker(self, cfg: Dict[str, Any]) -> None:
         source_id = cfg["source_id"]
         source_label = cfg["source_label"]
@@ -20,8 +24,10 @@ class RbFullScrapeWorkerMixin:
         counters = {"imported": 0, "skipped": 0, "rejected": 0}
         scrape_warning = None
         import_lock = threading.Lock()
+        _searcher = None
         try:
-            eth = ArrestSearcher(cfg["db_path"]).ethnic_db
+            _searcher = ArrestSearcher(cfg["db_path"])
+            eth = _searcher.ethnic_db
             self._rb_full_eth = eth
             db = Database(cfg["db_path"])
             try:
@@ -174,8 +180,12 @@ class RbFullScrapeWorkerMixin:
             self.log_full(f"{source_label} scrape failed: {e}")
             self.after(
                 0,
-                lambda: self.rb_full_status.configure(text=f"Failed: {e}"),
+                lambda e=e: self.rb_full_status.configure(text=f"Failed: {e}"),
             )
         finally:
-            self._rb_full_busy = False
-            self.is_running = False
+            if _searcher is not None:
+                try:
+                    _searcher.close()
+                except Exception:
+                    pass
+            self.after(0, self._rb_full_scrape_done)

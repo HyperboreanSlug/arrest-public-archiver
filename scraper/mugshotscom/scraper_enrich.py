@@ -65,7 +65,8 @@ class MugshotsComEnrichMixin:
                 client_pool.release(http)
 
         try:
-            with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+            pool = ThreadPoolExecutor(max_workers=max(1, workers))
+            try:
                 futures = [pool.submit(work, c) for c in batch]
                 for fut in as_completed(futures):
                     if self._cancelled(cancel_check):
@@ -86,6 +87,8 @@ class MugshotsComEnrichMixin:
                         record_cb(done, n)
                     if progress_cb:
                         progress_cb(n, row_limit or None)
+            finally:
+                pool.shutdown(wait=False, cancel_futures=True)
         finally:
             client_pool.close()
 

@@ -60,8 +60,11 @@ class RecentlyBookedScraper(RecentlyBookedScrapeMixin, RecentlyBookedProcessMixi
             return
         try:
             progress_cb(count, None, context)
-        except TypeError:
-            progress_cb(count, None)
+        except TypeError as exc:
+            if "positional argument" in str(exc) or "takes" in str(exc):
+                progress_cb(count, None)
+            else:
+                raise
 
     @staticmethod
     def _emit(
