@@ -195,11 +195,15 @@ _DROP_UNLESS_ONLY = re.compile(
     r"|\bprobation\s+viol"
     r"|\bparole\s+viol"
     r"|\binterfere?\w*\s+w(?:ith)?\s*emergency\s+req"
+    r"|\bpublic\s+order\s+crimes?\b"
+    r"|\b2\s+way\s+comm(?:unication)?\s+device\b"
 )
 _VOP_REDUNDANT = re.compile(r"(?i)\bVOP\s*\(VOP\)\s*VOP\b")
 _STATUTE_NUM = re.compile(
     r"\s*\b\d{1,3}[.\-]\d{1,4}(?:\([A-Za-z0-9]+\)){0,2}(?=\s|$|[;,.])"
 )
+_BARE_STATUTE = re.compile(r"(?:^|[;·]\s*)\d{6,10}\s*(?=$|[;·])")
+_JAIL_COLON = re.compile(r"\s*:\s+")
 
 
 def polish_card_charge(text: str) -> str:
@@ -232,11 +236,12 @@ def polish_card_charge(text: str) -> str:
         s = _BAC_FRAG.sub("", s)
         s = _VOP_REDUNDANT.sub("VOP", s)
         s = _STATUTE_NUM.sub("", s)
+        s = _JAIL_COLON.sub(" ", s)
         s = _rewrite_card_phrases(s)
         s = re.sub(r"\s+", " ", s).strip(" -–—:;")
         s = re.sub(r"\(\s*\)", "", s)
         s = re.sub(r"\s+", " ", s).strip(" -–—:;.")
-        if not s:
+        if not s or re.fullmatch(r"\d{4,10}", s):
             continue
         key = s.casefold()
         if key in seen:

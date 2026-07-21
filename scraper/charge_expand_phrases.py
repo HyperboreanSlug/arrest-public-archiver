@@ -121,6 +121,14 @@ EXPAND_PHRASES: List[Tuple[str, str]] = [
         "Possession of Weapon in Commission of Felony",
     ),
     (r"\bGRAND\s+THEFT\s+3RD\s+DEGREE[-\s]?FIREARM\b", "Grand Theft Firearm"),
+    (r"\b2\s+WAY\s+COMM(?:UNICATION)?\s+DEVICE\b", "Two-Way Communication Device"),
+    (r"\bUSE\s+OF\s+A?\s*TWO-?WAY\s+COMMUNICATION\s+DEVICE\b", "Use of a Two-Way Communication Device"),
+    (r"\bOBT(?:AIN)?\s+PROP(?:ERTY)?\s+BY\s+FALSE\s+PR(?:ETENSES)?(?:\s*/?\s*CHTS)?(?:\s*/?\s*SER)?\b", "Obtaining Property by False Pretenses"),
+    (r"\bDRUG\s+PARA(?:PHERNALIA)?\s*[-–—/]?\s*USE\s*/?\s*POSSESS\b", "Drug Paraphernalia Use or Possess"),
+    (r"\bDISCHG(?:ING)?\s+FIREARM\s*[-–—/]?\s*OCC(?:UPIED)?\s+PROP(?:ERTY)?\b", "Discharging Firearm at Occupied Property"),
+    (r"\bSPEED(?:ING)?\s+ELUDE\s+ARREST(?:\s+OR\s*/?\s*ATTEM(?:PT)?)?\b", "Speeding to Elude Arrest"),
+    (r"\bDRIV(?:ING)?\s+LIC(?:ENSE)?\s+REVOK(?:ED)?\b", "Driving With License Revoked"),
+    (r"\bBURG(?:LARY)?\s+(?:OF\s+)?HABIT(?:ATION)?\b", "Burglary of a Habitation"),
     # Ordinal degree glued to digits
     (r"\b(\d+)(?:ST|ND|RD|TH)\s+DEGREE\b", r"\1th Degree"),
 ]
