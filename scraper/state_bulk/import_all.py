@@ -36,13 +36,20 @@ STATE_SOURCES = {
         "portal": "https://data.vermont.gov/Public-Safety/DOCPublicUseFile/vf3r-u4kv",
     },
     "vt": {"alias": "vermont"},
+    "florida": {
+        "id": "fl_fdc",
+        "name": "Florida DOC offender search (named, scraped)",
+        "state": "FL",
+        "portal": "https://pubapps.fdc.myflorida.com/OffenderSearch/Search.aspx?TypeSearch=AI",
+    },
+    "fl": {"alias": "florida"},
 }
 
 
 def resolve_states(spec: str) -> List[str]:
     raw = (spec or "all").strip().lower()
     if raw in ("all", "*"):
-        return ["illinois", "texas", "missouri", "vermont"]
+        return ["illinois", "texas", "missouri", "vermont", "florida"]
     out: List[str] = []
     for part in raw.replace(";", ",").split(","):
         key = part.strip().lower()
@@ -119,6 +126,14 @@ def import_state_bulk(
                 force=force,
                 download=download,
                 force_download=force_download,
+            )
+        elif key == "florida":
+            from scraper.state_bulk.florida import scrape_florida
+
+            results[key] = scrape_florida(
+                database=database,
+                limit=limit,
+                force=force,
             )
         else:
             raise ValueError(key)
