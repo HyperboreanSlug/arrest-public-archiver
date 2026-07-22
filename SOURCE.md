@@ -199,6 +199,7 @@ tests/                         # Smoke suite split under tests/smoke/
 | `config.py` | Re-export: `ArrestSource`, `SOURCES`, `get_source`, bulk/named helpers |
 | `config_types.py` | `ArrestSource` dataclass, UA, delays, timeouts |
 | `config_sources.py` | Tier-A open-data source definitions |
+| `config_sources_named.py` | Named Socrata sources (Dallas, Sonoma, Norfolk, Providence) |
 | `app_settings.py` | Load/save `data/app_settings.json` |
 | `normalize.py` | Map vendor columns → canonical arrest fields |
 | `charge_classifications.py` | Public charge classify API |
@@ -300,6 +301,8 @@ Named offender spreadsheets from state corrections open-data portals
 |--------|--------|------|
 | **Illinois IDOC** | [Population data sets](https://idoc.illinois.gov/reportsandstatistics/populationdatasets.html) | Named XLS: prison pop, parole, admissions, exits (name, DOB, race, offense) |
 | **Texas TDCJ** | [High Value Data Sets.xlsx](https://www.tdcj.texas.gov/documents/High_Value_Data_Sets.xlsx) | ~140k named current inmates (race, offense, facility) |
+| **Missouri DOC** | [Sunshine Law fak930.zip](https://docservices.mo.gov/Sunshine_Law/fak930.zip) | All offenders since 1974, nightly fixed-width (name, race, sex, DOB, offense, county) |
+| **Vermont DOC** | [Socrata vf3r-u4kv](https://data.vermont.gov/Public-Safety/DOCPublicUseFile/vf3r-u4kv) | Daily individual-level identifiable data (name, race, sex, offense, facility) |
 
 | Module | Function |
 |--------|----------|
@@ -308,7 +311,9 @@ Named offender spreadsheets from state corrections open-data portals
 | `xls_io.py` | Read IDOC-style XLS/XLSX (skip title banner) |
 | `illinois.py` | Download + map + import IDOC files → `il_idoc` |
 | `texas.py` | Download + map + import TDCJ high-value → `tx_tdcj` |
-| `import_all.py` | Registry + dispatch (`illinois`, `texas`, `all`) |
+| `missouri.py` | Download + parse fixed-width + import → `mo_doc` |
+| `vermont.py` | Download Socrata CSV + map + import → `vt_doc` |
+| `import_all.py` | Registry + dispatch (`illinois`, `texas`, `missouri`, `vermont`, `all`) |
 
 ### NC DAC bulk tables (`scraper/nc_dac/`)
 
@@ -390,6 +395,27 @@ https://www.dac.nc.gov/contacts/public-records-request/public-records-online
 | `scraper.py` | Public scraper class |
 | `scraper_core.py` | Init/enrich/cancel helpers |
 | `scraper_run.py` | County/state/all/live run loops |
+
+### City jail monitors (`scraper/city_monitors/`)
+
+Custom scrapers for cities not covered by RB or Mugshots.com.
+Registered in `mugshot_sources/registry.py` so they appear in the
+RecentlyBooked tab source list.
+
+| Module | Function |
+|--------|----------|
+| `__init__.py` | Package exports |
+| `base.py` | `CityMonitor` base class (HTTP form scraping) |
+| `registry.py` | Monitor catalog + lookup helpers |
+| `sf_sheriff.py` | San Francisco Sheriff inmate search |
+| `nyc_doc.py` | NYC DOC Inmate Lookup Service |
+| `hawaii_doc.py` | Hawaii DOC offender search (Honolulu) |
+
+### City coverage data (`scraper/city_coverage/`)
+
+| Module | Function |
+|--------|----------|
+| `__init__.py` | `TOP_250_CITIES` list (city, state) for coverage audit |
 
 ### Open-data scrapers (`scraper/scrapers/`)
 

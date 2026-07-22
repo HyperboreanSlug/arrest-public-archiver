@@ -198,3 +198,7 @@ SOURCES: List[ArrestSource] = [
         status="verified_bulk",
     ),
 ]
+
+from scraper.config_sources_named import NAMED_SOURCES  # noqa: E402
+
+SOURCES.extend(NAMED_SOURCES)

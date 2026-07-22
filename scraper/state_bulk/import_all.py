@@ -22,13 +22,27 @@ STATE_SOURCES = {
         "portal": "https://www.tdcj.texas.gov/documents/High_Value_Data_Sets.xlsx",
     },
     "tx": {"alias": "texas"},
+    "missouri": {
+        "id": "mo_doc",
+        "name": "Missouri DOC Sunshine Law offender file (since 1974)",
+        "state": "MO",
+        "portal": "https://docservices.mo.gov/Sunshine_Law/fak930.zip",
+    },
+    "mo": {"alias": "missouri"},
+    "vermont": {
+        "id": "vt_doc",
+        "name": "Vermont DOC public use file (Socrata, daily)",
+        "state": "VT",
+        "portal": "https://data.vermont.gov/Public-Safety/DOCPublicUseFile/vf3r-u4kv",
+    },
+    "vt": {"alias": "vermont"},
 }
 
 
 def resolve_states(spec: str) -> List[str]:
     raw = (spec or "all").strip().lower()
     if raw in ("all", "*"):
-        return ["illinois", "texas"]
+        return ["illinois", "texas", "missouri", "vermont"]
     out: List[str] = []
     for part in raw.replace(";", ",").split(","):
         key = part.strip().lower()
@@ -77,6 +91,28 @@ def import_state_bulk(
 
             results[key] = import_texas(
                 data_root / "tx_tdcj",
+                database=database,
+                limit=limit,
+                force=force,
+                download=download,
+                force_download=force_download,
+            )
+        elif key == "missouri":
+            from scraper.state_bulk.missouri import import_missouri
+
+            results[key] = import_missouri(
+                data_root / "mo_doc",
+                database=database,
+                limit=limit,
+                force=force,
+                download=download,
+                force_download=force_download,
+            )
+        elif key == "vermont":
+            from scraper.state_bulk.vermont import import_vermont
+
+            results[key] = import_vermont(
+                data_root / "vt_doc",
                 database=database,
                 limit=limit,
                 force=force,

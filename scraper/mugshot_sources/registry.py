@@ -59,6 +59,47 @@ MUGSHOT_SOURCES: List[MugshotSourceInfo] = [
         notes="JS SPA shell; no server-rendered listings yet.",
         weight=0.0,
     ),
+    # Custom city jail monitors (not aggregators — direct jail search forms).
+    MugshotSourceInfo(
+        id="sf_sheriff",
+        label="SF Sheriff (city monitor)",
+        base_url="https://www.sfsheriff.gov/inmate-search",
+        available=True,
+        notes="San Francisco Sheriff inmate search. HTML form.",
+        weight=0.5,
+    ),
+    MugshotSourceInfo(
+        id="nyc_doc",
+        label="NYC DOC (city monitor)",
+        base_url="https://a073-ilsweb.nyc.gov/",
+        available=True,
+        notes="NYC DOC Inmate Lookup Service. HTML form, race coded.",
+        weight=0.5,
+    ),
+    MugshotSourceInfo(
+        id="hawaii_doc",
+        label="Hawaii DOC (city monitor)",
+        base_url="https://corrections.ehawaii.gov/",
+        available=True,
+        notes="Hawaii DOC offender search. HTML form, photo on detail.",
+        weight=0.5,
+    ),
+    MugshotSourceInfo(
+        id="baltimore_dpscs",
+        label="Baltimore DPSCS (city monitor)",
+        base_url="https://dpscs.maryland.gov/",
+        available=True,
+        notes="Maryland DPSCS incarcerated individual locator.",
+        weight=0.5,
+    ),
+    MugshotSourceInfo(
+        id="alaska_doc",
+        label="Alaska DOC (city monitor)",
+        base_url="https://doc.alaska.gov/",
+        available=True,
+        notes="Alaska DOC offender search. Form-based.",
+        weight=0.5,
+    ),
 ]
 
 _SOURCE_BY_ID = {s.id: s for s in MUGSHOT_SOURCES}
