@@ -43,7 +43,13 @@ def parse_last_first(name: Optional[str]) -> Tuple[Optional[str], Optional[str],
 def _title(value: Optional[str]) -> Optional[str]:
     if not value:
         return None
-    return " ".join(p.capitalize() for p in value.split())
+    # ponytail: strip digits/ID tokens leaked from fixed-width parsing
+    parts = []
+    for p in value.split():
+        cleaned = re.sub(r"\d+", "", p)
+        if cleaned:
+            parts.append(cleaned.capitalize())
+    return " ".join(parts) if parts else None
 
 
 def normalize_sex(value: Optional[str]) -> Optional[str]:

@@ -27,6 +27,14 @@ _CASE_NUMBER = re.compile(
 
 _SPLIT = re.compile(r"\s*[;|]\s*")
 _WORDY = re.compile(r"[A-Za-z]{3,}")
+# Quantity/weight ranges and dollar amounts to strip from charge text.
+_QTY_RANGE = re.compile(
+    r"(?i)\s*\d+[-<>/]\d+\s*(?:GRAMS?|G\b|LBS?|KG|OZ|PILLS?|DEPIC)"
+)
+_DOLLAR = re.compile(
+    r"\s*\$\d[\d,]*(?:\.\d+)?(?:\s*[-<>/]\s*\$?\d[\d,]*)?(?:\s*(?:&|AND)\s*(?:LS|LESS|MORE))?"
+)
+_PENALTY_RANGE = re.compile(r"(?i)\s*\d+[-<>/]\d+\s*G\b")
 # Real HTML only (letter tag name). Do not treat age compares like
 # ``Victim <12 Offender >18`` as tags — that was deleting victim ages.
 _HTML_TAG = re.compile(r"</?[A-Za-z][A-Za-z0-9]*(?:\s[^>]*)?>")
@@ -47,6 +55,15 @@ _META_FIELD = re.compile(
 
 def _norm(text: str) -> str:
     return " ".join((text or "").replace("\u00a0", " ").split()).strip(" \t,.;:-")
+
+
+def _strip_quantities(text: str) -> str:
+    """Remove weight/quantity ranges and dollar amounts from charge text."""
+    s = _QTY_RANGE.sub("", text)
+    s = _PENALTY_RANGE.sub("", s)
+    s = _DOLLAR.sub("", s)
+    s = re.sub(r"[/\-]\s*$", "", s)
+    return _norm(s)
 
 
 def _strip_html(text: str) -> str:
@@ -213,6 +230,9 @@ def sanitize_charge_text(text: str) -> str:
             s = strip_registry_chrome(s)
         if has_charge_table_chrome(s) or re.search(r"#\d+", s):
             s = strip_charge_table_chrome(s)
+        if not s or is_non_charge(s):
+            continue
+        s = _strip_quantities(s)
         if not s or is_non_charge(s):
             continue
         key = s.casefold()
