@@ -103,7 +103,7 @@ def map_vt_row(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "charge_description": offense,
         "booking_id": doc_id,
         "source_id": f"vt_doc:{doc_id or last}-{first}",
-        "source_url": "https://data.vermont.gov/Public-Safety/DOCPublicUseFile/vf3r-u4kv",
+        "source_url": f"https://data.vermont.gov/Public-Safety/DOCPublicUseFile/vf3r-u4kv#{doc_id or last}-{first}",
         "source_system": SOURCE,
         "raw_json": raw_json({"dob": dob}),
     }
