@@ -7,6 +7,16 @@ from typing import List
 # Higher = listed first on export cards.
 _TIERS: list[tuple[int, re.Pattern[str]]] = [
     (
+        110,
+        re.compile(
+            r"(?i)\b(?:"
+            r"immigration|ice\s+hold|ice\s+detainer|i\.?\s*c\.?\s*e\.?|"
+            r"customs\s+enforcement|ins\s+hold|dhs\s+hold|detainer|"
+            r"immig|federal\s+offense\s*\(?\s*immigration"
+            r")\b"
+        ),
+    ),
+    (
         100,
         re.compile(
             r"(?i)\b(?:"

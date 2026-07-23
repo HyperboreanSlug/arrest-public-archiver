@@ -69,6 +69,7 @@ _RULES: List[Tuple[str, List[str]]] = [
             r"\bviolent\s+off.*fail\s+regis", r"\bincest\b",
             r"\bmaterial\s+harmful\s+to\s+minors",
             r"\bfail.*register.*sex(?:ual)?\s+off",             r"\bsex(?:ual)?\s+off.*register",
+            r"\bfail.*comply.*sex(?:ual)?\s+off",               r"\bsex(?:ual)?\s+off.*(?:rept|report|comply)",
             r"\bsexoff", r"\bsex(?:ual)?\s+offender.*(?:false|child|premises|school)",
             r"\bchild\s+sex(?:ual)?\s+offender", r"\bforcible\s+sex",
             r"\bindec(?:ent)?\s+(?:w|sol).*child", r"\bgrooming\b",

@@ -18,6 +18,33 @@ _NOISE = re.compile(
 )
 _STRIP_PREFIX = re.compile(r"(?i)^\s*MTR\s*[-–—:]\s*")
 _STRIP_OOC = re.compile(r"(?i)^\s*out\s+of\s+county(?:\s+hold)?\s*[/:\-]\s*")
+
+_SEV_ORDER = re.compile(
+    r"(?i)\b(?:immig|ice\b|i\.?\s*c\.?\s*e\.?|customs\s+enforce|detainer|dhs\s+hold)"
+)
+_SEV_SEX = re.compile(
+    r"(?i)\b(?:rape|sexual?\s+(?:assault|abuse|offense)|molest|lewd|child\s+(?:porn|sex)|"
+    r"sex\s+offender|incest|fondl|sodomy|idsi|traffick)"
+)
+_SEV_VIOLENT = re.compile(
+    r"(?i)\b(?:murder|homicide|kidnap|robbery|assault|battery|domestic|weapon|firearm)"
+)
+
+
+def _severity_sort(labels: List[str]) -> List[str]:
+    """Sort charge labels: ICE/immigration first, then sex, then violent, then rest."""
+    def _rank(lab: str) -> int:
+        if _SEV_ORDER.search(lab):
+            return 0
+        if _SEV_SEX.search(lab):
+            return 1
+        if _SEV_VIOLENT.search(lab):
+            return 2
+        return 3
+
+    indexed = list(enumerate(labels))
+    indexed.sort(key=lambda iv: (_rank(iv[1]), iv[0]))
+    return [lab for _, lab in indexed]
 # For matching only: strip citation noise without expanding tokens.
 _MATCH_NOISE = re.compile(
     r"(?i)"
@@ -126,6 +153,7 @@ def summarize_charge(record_or_text: Any) -> str:
     # Never list OTHER next to real offenses (charts / multi-charge rows).
     if len(labels) > 1:
         labels = [lab for lab in labels if lab.upper() != "OTHER"]
+        labels = _severity_sort(labels)
     return "; ".join(labels) if labels else "—"
 
 
