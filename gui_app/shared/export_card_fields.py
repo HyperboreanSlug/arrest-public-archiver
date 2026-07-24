@@ -145,6 +145,8 @@ def crime(record: Mapping[str, Any], *, max_labels: int = 6) -> str:
     if summary and summary not in ("—", "OTHER"):
         return _finalize(polish_card_charge(summary) or summary)
     cat = str(record.get("charge_category") or "").strip()
+    if cat and re.search(r"(?i)\bice\b|\bimmig", cat.replace("_", " ")):
+        return "Immigration and Customs Hold"
     return cat.replace("_", " ").title() if cat else "Unknown charge"
 
 

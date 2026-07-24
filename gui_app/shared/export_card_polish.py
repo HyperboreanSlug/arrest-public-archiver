@@ -188,6 +188,13 @@ def _rewrite_card_phrases(s: str) -> str:
     return s
 
 
+# Any ICE/immigration-hold phrasing → one canonical card label (no duplicates).
+_ICE_PART = re.compile(
+    r"(?i)\bice\b|\bi\.?\s*c\.?\s*e\.?\b|\bimmig\w*|\bdetainer\b"
+    r"|\bins\s+hold\b|\bdhs\s+hold\b"
+)
+_ICE_LABEL = "Immigration and Customs Hold"
+
 _DROP_UNLESS_ONLY = re.compile(
     r"(?i)arrest\s+on\s+failure\s+to\s+obey\s+written\s+promise\s+to\s+appear"
     r"|\bVOP\b"
@@ -241,6 +248,8 @@ def polish_card_charge(text: str) -> str:
         s = re.sub(r"\s+", " ", s).strip(" -–—:;")
         s = re.sub(r"\(\s*\)", "", s)
         s = re.sub(r"\s+", " ", s).strip(" -–—:;.")
+        if _ICE_PART.search(s):
+            s = _ICE_LABEL
         if not s or re.fullmatch(r"\d{4,10}", s):
             continue
         key = s.casefold()
