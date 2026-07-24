@@ -37,7 +37,9 @@ _NAME_SIZE = 52
 # Original crime box was 128px @ 42pt; grow when needed, shrink type only as last resort.
 _CRIME_H_MIN = 128
 _CRIME_H_MAX = 300
-_FOOTER_H = 68
+_FOOTER_H = 180
+_LOC_SIZE = 30
+_HANDLE_SIZE = 60  # 3x the old 20pt brand tag
 _REPORTED_SIZE = 38
 _RACE_SIZE = 76
 _NUMBER_SIZE = 52  # bottom-right export No. — large (SORPA parity)
@@ -64,15 +66,9 @@ def render_export_card(
     # Footer right: export No.; left can include arrest date
     release_lbl = arrest_datetime(record, assign=assign_number)
     date_lbl = arrest_date_label(record)
-    if date_lbl and loc and loc != "Unknown location":
-        loc_left = f"{loc}  ·  {date_lbl}"
-    elif date_lbl:
-        loc_left = date_lbl
-    else:
-        loc_left = loc
 
     name_font = load_font(_NAME_SIZE, bold=True)
-    footer_font = load_font(22)
+    footer_font = load_font(_LOC_SIZE)
     number_font = load_font(_NUMBER_SIZE, bold=True)
     reported_font = load_font(_REPORTED_SIZE, bold=True)
     race_font = _load_display_font(_RACE_SIZE)
@@ -138,7 +134,8 @@ def render_export_card(
     )
     _draw_footer(
         draw,
-        loc_left,
+        loc,
+        date_lbl,
         release_lbl,
         y + 14,
         _PAD,
@@ -220,7 +217,8 @@ def _draw_crime_panel(
 def _draw_footer(
     draw,
     loc: str,
-    date: str,
+    arrest_date: str,
+    release_lbl: str,
     y: int,
     margin: int,
     max_w: int,
@@ -230,26 +228,27 @@ def _draw_footer(
     draw.line((margin, y, _CARD_W - margin, y), fill=_LINE, width=2)
     ty = y + 12
     left = (loc or "—")[:40]
-    right = (date or "—")[:28]
-    handle = _WATERMARK
+    right = (release_lbl or "—")[:28]
     num_font = number_font or load_font(_NUMBER_SIZE, bold=True)
     draw.text((margin, ty + 6), left.upper(), font=font, fill=_MUTED)
     rb = draw.textbbox((0, 0), right, font=num_font)
     rw = rb[2] - rb[0]
-    # Brighter + larger so export No. / date reads clearly on the card
+    # Brighter + larger so export No. reads clearly on the card
     draw.text(
         (_CARD_W - margin - rw, ty),
         right,
         font=num_font,
         fill=(235, 235, 240, 255),
     )
-    # Brand mark centered in footer (same handle as photo watermark)
-    handle_font = load_font(20, bold=True)
-    hb = draw.textbbox((0, 0), handle, font=handle_font)
+    if arrest_date:
+        draw.text((margin, ty + 46), arrest_date, font=font, fill=_MUTED)
+    # Brand mark centered on its own footer row (same handle as photo watermark)
+    handle_font = load_font(_HANDLE_SIZE, bold=True)
+    hb = draw.textbbox((0, 0), _WATERMARK, font=handle_font)
     hw = hb[2] - hb[0]
     draw.text(
-        ((_CARD_W - hw) // 2, ty + 6),
-        handle,
+        ((_CARD_W - hw) // 2, ty + 92),
+        _WATERMARK,
         font=handle_font,
         fill=(200, 200, 210, 255),
     )
